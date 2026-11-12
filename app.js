@@ -1051,12 +1051,6 @@ function handleTab2Submit(event) {
   event.preventDefault();
 
   const totalQty = Number(document.getElementById("tab2-qty")?.value || 1);
-  const shelfSum = state.tab2Shelves.reduce((acc, s) => acc + (s.qty || 0), 0);
-
-  if (shelfSum !== totalQty) {
-    alert(`Tổng số lượng chia vào các giá kệ (${shelfSum}) chưa khớp với số lượng nhập (${totalQty})!\nVui lòng điều chỉnh lại cho khớp 100%.`);
-    return;
-  }
 
   const name = document.getElementById("tab2-name")?.value.trim();
   const unit = document.getElementById("tab2-unit")?.value.trim();
@@ -1088,18 +1082,11 @@ function handleTab2Submit(event) {
     return;
   }
 
-  const shelvesData = state.tab2Shelves.map((s, idx) => {
-    const suggestedLetter = String.fromCharCode(65 + (idx % 26));
-    const suggestedTier = String(idx + 1);
-    const rawShelf = s.shelf?.trim() || suggestedLetter;
-    const shelfName = /^(giá|kệ|khu|kho)/i.test(rawShelf) ? rawShelf : `Giá ${rawShelf}`;
-    const rawTier = s.tier?.trim() || suggestedTier;
-    const tierName = /^(tầng|sàn|ô)/i.test(rawTier) ? rawTier : `Tầng ${rawTier}`;
-    return {
-      shelf: `${shelfName} - ${tierName}`,
-      qty: s.qty
-    };
-  });
+  // Tự động lưu thẳng vào kho đã chọn, không cần xác định vị trí sơ đồ kệ
+  const shelvesData = [{
+    shelf: "Lưu kho",
+    qty: totalQty
+  }];
 
   const mainPhoto = state.tab2AlbumPhotos[0] || (hasExistingImg ? targetItem.image : "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=400");
 

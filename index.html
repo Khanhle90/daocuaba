@@ -565,46 +565,9 @@
             </div>
           </div>
 
-          <!-- BOX: Vị Trí Lưu Kho (1 kho cho mỗi lần lưu) - Yellow container Image 1 -->
-          <div class="border-2 border-amber-300 bg-amber-50/20 rounded-2xl p-4 space-y-3">
-            
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <div class="flex items-center gap-2 font-bold text-slate-800 text-xs sm:text-sm">
-                <span>🏛️ Vị Trí Lưu Kho (1 kho cho mỗi lần lưu)</span>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <!-- Status Badge -->
-                <span id="tab2-shelf-status-badge" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                  <i data-lucide="check-square" class="w-3.5 h-3.5"></i>
-                  <span>Khớp số lượng: 1 / 1</span>
-                </span>
-
-                <!-- Button: + Thêm vị trí giá kệ -->
-                <button type="button" onclick="addTab2ShelfItemRow()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition">
-                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                  <span>+ Thêm vị trí giá kệ</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Kho lưu trữ đang chọn (Đã chọn tại Thông tin chung phía trên) -->
-            <div class="flex items-center justify-between p-2.5 bg-amber-100/70 rounded-xl border border-amber-300 text-xs">
-              <div class="flex items-center gap-2 truncate">
-                <i data-lucide="map-pin" class="w-4 h-4 text-amber-700 shrink-0"></i>
-                <span class="text-slate-700">Lưu vào kho: <strong id="tab2-selected-warehouse-label" class="text-amber-950 font-extrabold">Kho Tổng Mỹ Đình (Hà Nội)</strong></span>
-              </div>
-              <button type="button" onclick="openWarehouseMap(document.getElementById('tab2-warehouse')?.value)" class="text-[11px] font-bold text-amber-900 hover:underline flex items-center gap-1 shrink-0 cursor-pointer" title="Tra cứu sơ đồ vị trí giá kệ kho này">
-                <span>🗺️ Sơ Đồ Giá Kệ</span>
-              </button>
-            </div>
-
-            <!-- Shelf Rows Container -->
-            <div id="tab2-shelf-rows-container" class="space-y-2 pt-1">
-              <!-- shelf rows inserted dynamically -->
-            </div>
-
-          </div>
+<button type="button" onclick="openWarehouseMap(document.getElementById('tab2-warehouse')?.value)" class="text-[11px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 transition cursor-pointer" title="Tra cứu sơ đồ vị trí giá kệ kho nhập này">
+                    <span>🗺️ Tra Bản Đồ Kho</span>
+                  </button>
 
           <!-- Danh mục (Chọn nhiều) - Pill Buttons (Image 1) -->
           <div class="space-y-1.5 pt-1">
