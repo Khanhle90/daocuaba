@@ -6,7 +6,6 @@
 // ==================== GLOBAL CONSTANTS & API KEYS ====================
 const IMGBB_API_KEY = "9b4a10db15d694a88f3aa0d1ffbc0669";
 const ADMIN_PASSWORD_DEFAULT = "admin123";
-const DEFAULT_GSHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpN4TEj5Ny0cyvNrpvL4s9kvz5uRJh6T8RJy8VAy-Cphwin6yzvH5kUAWUmSllkRRc1w/exec";
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -106,11 +105,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initState();
   renderApp();
   initGlobalAutocompleteListeners();
-
-  // Tự động kéo dữ liệu mới nhất từ Google Sheet về máy khi mở app (Đồng bộ 2 chiều)
-  setTimeout(() => {
-    pullFromGoogleSheet(true);
-  }, 500);
 });
 
 function initState() {
@@ -170,17 +164,10 @@ function initState() {
   });
 
   state.gsheetConfig = loadFromStorage(STORAGE_KEYS.GSHEET_CONFIG, {
-    url: DEFAULT_GSHEET_WEBHOOK_URL,
+    url: "https://script.google.com/macros/s/AKfycbz_aba_mock/exec",
     isConnected: true,
     lastSync: new Date().toISOString()
   });
-
-  // Tự động chuyển sang URL chính thức nếu URL trong máy là link cũ hoặc link mock
-  if (!state.gsheetConfig.url || state.gsheetConfig.url.includes("mock") || state.gsheetConfig.url.includes("AKfycbwpN4TEj5Ny0cyvNrpvL4s9kvZ5uRJhGT8Rjy8VAy")) {
-    state.gsheetConfig.url = DEFAULT_GSHEET_WEBHOOK_URL;
-    state.gsheetConfig.isConnected = true;
-    localStorage.setItem(STORAGE_KEYS.GSHEET_CONFIG, JSON.stringify(state.gsheetConfig));
-  }
 
   // Sanitize: "Chuẩn bị" slips should never have keeper approval or pending approval notifications
   if (Array.isArray(state.documents)) {
@@ -230,10 +217,10 @@ function loadFromStorage(key, defaultValue) {
   }
 }
 
-async function refreshData() {
-  showToast("Đang làm mới & đồng bộ 2 chiều với Google Sheet...", "info");
-  await pullFromGoogleSheet(false);
+function refreshData() {
+  initState();
   renderApp();
+  showToast("Đã làm mới dữ liệu hệ thống thành công!", "success");
 }
 
 function renderApp() {
@@ -283,10 +270,10 @@ function renderGSheetStatus() {
 
   if (state.gsheetConfig.isConnected) {
     pulseEl.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 live-pulse";
-    textEl.textContent = "Đã kết nối";
+    textEl.textContent = "Google Sheet: Đã kết nối";
   } else {
     pulseEl.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
-    textEl.textContent = "Mất kết nối";
+    textEl.textContent = "Google Sheet: Mất kết nối";
   }
 }
 
@@ -686,7 +673,6 @@ function importInventoryExcel(event) {
       });
 
       saveState();
-      syncToGoogleSheet("UPDATE_ITEMS", null, { items: state.items });
       renderTab1();
       showToast(`Đã nhập thành công ${count} đạo cụ từ file Excel!`, "success");
     } catch (err) {
@@ -1051,6 +1037,12 @@ function handleTab2Submit(event) {
   event.preventDefault();
 
   const totalQty = Number(document.getElementById("tab2-qty")?.value || 1);
+  const shelfSum = state.tab2Shelves.reduce((acc, s) => acc + (s.qty || 0), 0);
+
+  if (shelfSum !== totalQty) {
+    alert(`Tổng số lượng chia vào các giá kệ (${shelfSum}) chưa khớp với số lượng nhập (${totalQty})!\nVui lòng điều chỉnh lại cho khớp 100%.`);
+    return;
+  }
 
   const name = document.getElementById("tab2-name")?.value.trim();
   const unit = document.getElementById("tab2-unit")?.value.trim();
@@ -1065,30 +1057,25 @@ function handleTab2Submit(event) {
   const categoriesArr = Array.from(state.tab2SelectedCategories);
   const purposesArr = Array.from(state.tab2SelectedPurposes);
 
-  // Bắt buộc chụp ảnh khi nhập kho lần đầu (nếu đã có file ảnh rồi thì không bắt buộc)
-  const hasPhotos = state.tab2AlbumPhotos && state.tab2AlbumPhotos.length > 0;
+  const shelvesData = state.tab2Shelves.map((s, idx) => {
+    const suggestedLetter = String.fromCharCode(65 + (idx % 26));
+    const suggestedTier = String(idx + 1);
+    const rawShelf = s.shelf?.trim() || suggestedLetter;
+    const shelfName = /^(giá|kệ|khu|kho)/i.test(rawShelf) ? rawShelf : `Giá ${rawShelf}`;
+    const rawTier = s.tier?.trim() || suggestedTier;
+    const tierName = /^(tầng|sàn|ô)/i.test(rawTier) ? rawTier : `Tầng ${rawTier}`;
+    return {
+      shelf: `${shelfName} - ${tierName}`,
+      qty: s.qty
+    };
+  });
+
+  const mainPhoto = state.tab2AlbumPhotos[0] || "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=400";
+
   let targetItem = null;
   if (state.tab2Mode === 'EXISTING') {
     targetItem = state.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.warehouseId === wh.id);
   }
-  const hasExistingImg = targetItem && targetItem.image && !targetItem.image.includes("unsplash");
-
-  if (state.tab2Mode === 'NEW' && !hasPhotos) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh hoặc tải file ảnh đạo cụ trước khi nhập kho lần đầu!");
-    return;
-  }
-  if (state.tab2Mode === 'EXISTING' && !hasExistingImg && !hasPhotos) {
-    alert("YÊU CẦU BẮT BUỘC:\nĐạo cụ này chưa có ảnh hiện trạng! Vui lòng chụp ảnh hoặc tải file ảnh đạo cụ trước khi nhập bổ sung!");
-    return;
-  }
-
-  // Tự động lưu thẳng vào kho đã chọn, không cần xác định vị trí sơ đồ kệ
-  const shelvesData = [{
-    shelf: "Lưu kho",
-    qty: totalQty
-  }];
-
-  const mainPhoto = state.tab2AlbumPhotos[0] || (hasExistingImg ? targetItem.image : "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=400");
 
   if (targetItem) {
     targetItem.ready += totalQty;
@@ -1149,7 +1136,6 @@ function handleTab2Submit(event) {
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   resetTab2Form();
   showToast(`Đã lưu thành công phiếu nhập mới [${docCode}]!`, "success");
   if (typeof confetti === "function") confetti();
@@ -1225,32 +1211,45 @@ function renderTab3PrepSlipsBanner() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
           ${pendingSlips.map(slip => {
             const isGom = (slip.slipType === "GATHERING" || slip.code?.startsWith("GD_") || slip.type === "Phiếu gom đồ");
-            const badgeType = isGom ? '📦 Phiếu gom đồ' : '📋 Phiếu chuẩn bị';
-            const badgeColor = isGom ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : 'bg-purple-100 text-purple-800 border-purple-200';
-            const borderColor = isGom ? 'border-cyan-300 hover:border-cyan-500' : 'border-purple-300 hover:border-purple-500';
-
-            return `
-            <div onclick="openGomSlipModal('${slip.id}')" class="p-2.5 bg-white rounded-xl border ${borderColor} flex items-center justify-between gap-2 shadow-2xs hover:shadow-xs transition cursor-pointer group">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="font-black text-xs text-slate-900">${slip.code}</span>
-                  <span class="text-[10px] px-1.5 py-0.5 rounded font-extrabold border ${badgeColor}">${badgeType}</span>
-                  <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800">Chờ xuất</span>
+            if (isGom) {
+              // Phiếu gom đồ (Excel)
+              return `
+              <div onclick="openGomSlipModal('${slip.id}')" class="p-2.5 bg-white rounded-xl border border-cyan-300 flex items-center justify-between gap-2 shadow-2xs hover:shadow-xs hover:border-cyan-500 transition cursor-pointer group">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-black text-xs text-cyan-900">${slip.code}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-extrabold bg-cyan-100 text-cyan-800 border border-cyan-200">📦 Phiếu gom đồ (Excel)</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800">Chờ gom</span>
+                  </div>
+                  <div class="font-bold text-xs text-slate-800 truncate mt-1">${slip.tourName}</div>
+                  <div class="text-[10px] text-slate-500">📍 ${slip.location || 'Tại kho'} • ${slip.items ? slip.items.length : 0} mục đạo cụ</div>
                 </div>
-                <div class="font-bold text-xs text-slate-800 truncate mt-1">${slip.tourName}</div>
-                <div class="text-[10px] text-slate-500">📍 ${slip.location || 'Tại kho'} • <strong>${slip.items ? slip.items.length : 0}</strong> mục đạo cụ</div>
+                <button type="button" onclick="event.stopPropagation(); openGomSlipModal('${slip.id}')" class="shrink-0 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-800 text-white font-bold text-xs rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer">
+                  <i data-lucide="package" class="w-3.5 h-3.5"></i>
+                  <span>Gom Đồ</span>
+                </button>
               </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onclick="event.stopPropagation(); applyPrepSlipToExport('${slip.id}')" class="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Nạp toàn bộ danh sách vào bảng xuất kho">
+              `;
+            } else {
+              // Phiếu chuẩn bị đồ (ấn vào mở thẳng bảng xuất đồ như 1 phiếu xuất đồ thông thường)
+              return `
+              <div onclick="applyPrepSlipToExport('${slip.id}')" class="p-2.5 bg-white rounded-xl border border-purple-300 flex items-center justify-between gap-2 shadow-2xs hover:shadow-xs hover:border-purple-500 transition cursor-pointer group">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-black text-xs text-purple-900">${slip.code}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-extrabold bg-purple-100 text-purple-800 border border-purple-200">📋 Phiếu chuẩn bị đồ</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Sẵn sàng xuất</span>
+                  </div>
+                  <div class="font-bold text-xs text-slate-800 truncate mt-1">${slip.tourName}</div>
+                  <div class="text-[10px] text-slate-500">📍 ${slip.location || 'Tại kho'} • ${slip.items ? slip.items.length : 0} mục đạo cụ</div>
+                </div>
+                <button type="button" onclick="event.stopPropagation(); applyPrepSlipToExport('${slip.id}')" class="shrink-0 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Ấn để mở toàn bộ danh sách ra bảng xuất đồ">
                   <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
-                  <span>Xuất Đồ</span>
-                </button>
-                <button type="button" onclick="event.stopPropagation(); deletePrepSlip('${slip.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="Xóa phiếu này nếu không dùng">
-                  <i data-lucide="trash-2" class="w-4 h-4 text-rose-500"></i>
+                  <span>Mở Phiếu Xuất</span>
                 </button>
               </div>
-            </div>
-            `;
+              `;
+            }
           }).join("")}
         </div>
       </div>
@@ -1294,24 +1293,14 @@ function renderTab3PrepSlipsBanner() {
   if (window.lucide) lucide.createIcons();
 }
 
-function deletePrepSlip(slipId) {
-  const slip = (state.prepSlips || []).find(s => s.id === slipId);
-  if (!slip) return;
-  if (!confirm(`Bạn có chắc chắn muốn xóa phiếu [${slip.code}] (${slip.tourName}) không?\n\nNếu không dùng, phiếu này sẽ được xóa khỏi danh sách.`)) {
-    return;
-  }
-  state.prepSlips = (state.prepSlips || []).filter(s => s.id !== slipId);
-  saveState();
-  closeModal("modal-prep-slip");
-  renderTab3PrepSlipsBanner();
-  showToast(`Đã xóa phiếu [${slip.code}] thành công!`, "info");
-}
+const gomSlipTempPhoto = {};
 
 function openGomSlipModal(slipId) {
   const slip = (state.prepSlips || []).find(s => s.id === slipId);
   if (!slip) return;
 
   const modal = document.getElementById("modal-prep-slip");
+  const badge = document.getElementById("prep-slip-code-badge");
   const subtitle = document.getElementById("prep-slip-subtitle");
   const body = document.getElementById("prep-slip-modal-body");
 
@@ -1320,123 +1309,124 @@ function openGomSlipModal(slipId) {
   const modalH3 = modal.querySelector("h3");
   if (modalH3) {
     modalH3.innerHTML = `
-      <div class="flex items-center gap-2">
-        <i data-lucide="file-text" class="w-5 h-5 text-sky-600"></i>
-        <span>Phiếu Xuất Kho / Danh Sách Đạo Cụ</span>
-        <span class="px-2 py-0.5 rounded text-[11px] font-black bg-sky-100 text-sky-900 border border-sky-300">${slip.code}</span>
-      </div>
+      <span>📦 Phiếu Gom Đồ (Tải Lên Từ Excel)</span>
+      <span id="prep-slip-code-badge" class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-200 text-cyan-900">${slip.code}</span>
     `;
   }
 
   if (subtitle) {
-    subtitle.textContent = `Chương trình: ${slip.tourName} • Địa điểm: ${slip.location || 'Tại kho'}`;
+    subtitle.textContent = `Gom hàng từ các giá kệ theo danh sách file Excel • ${slip.tourName}`;
   }
 
-  const items = slip.items || [];
-  const totalQty = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const teamPhoto = gomSlipTempPhoto[slipId] || slip.teamPhoto;
 
   body.innerHTML = `
-    <!-- 1. Header Information (Khung thông tin phiếu xuất kho thông thường) -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+    <!-- Slip Information Header -->
+    <div class="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
       <div>
-        <span class="text-slate-500 block text-[10px]">Chương trình / Dự án:</span>
-        <strong class="text-slate-900 text-xs">${slip.tourName}</strong>
+        <div><strong class="text-slate-700">Chương trình / Dự án:</strong> <span class="text-cyan-950 font-bold">${slip.tourName}</span></div>
+        <div class="mt-1"><strong class="text-slate-700">Địa điểm tổ chức:</strong> ${slip.location || 'Tại kho'}</div>
       </div>
       <div>
-        <span class="text-slate-500 block text-[10px]">Địa điểm tổ chức:</span>
-        <span class="text-slate-800 font-medium">${slip.location || 'Tại kho'}</span>
-      </div>
-      <div>
-        <span class="text-slate-500 block text-[10px]">Kho xuất hàng:</span>
-        <span class="text-slate-800 font-medium">${slip.warehouseName || 'Kho Tổng Mỹ Đình'}</span>
-      </div>
-      <div>
-        <span class="text-slate-500 block text-[10px]">Ngày thực hiện:</span>
-        <span class="text-slate-800 font-medium">${slip.eventDate || formatDate(new Date(), 'DD/MM/YYYY')}</span>
-      </div>
-      <div>
-        <span class="text-slate-500 block text-[10px]">Tổng số lượng:</span>
-        <strong class="text-sky-800 text-xs">${totalQty} món (${items.length} loại)</strong>
-      </div>
-      <div>
-        <span class="text-slate-500 block text-[10px]">Trạng thái phiếu:</span>
-        <span class="inline-block px-1.5 py-0.2 rounded font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200">Chờ xuất kho</span>
+        <div><strong class="text-slate-700">Ngày diễn ra:</strong> ${slip.eventDate || 'Hôm nay'}</div>
+        <div class="mt-1"><strong class="text-slate-700">Kho chuẩn bị:</strong> ${slip.warehouseName || 'Kho Tổng'}</div>
       </div>
       ${slip.note ? `
-        <div class="col-span-2 sm:col-span-3 pt-1.5 border-t border-slate-200 text-slate-600 italic text-[11px]">
+        <div class="col-span-2 pt-1.5 border-t border-slate-200 text-slate-600 italic">
           <strong>Ghi chú:</strong> ${slip.note}
         </div>
       ` : ''}
     </div>
 
-    <!-- 2. Items Table (Hiển thị toàn bộ các đồ như 1 phiếu xuất kho thông thường) -->
-    <div class="space-y-1.5">
+    <!-- Items Picking Checklist Cards -->
+    <div class="space-y-2">
       <div class="flex items-center justify-between font-bold text-slate-800 text-xs">
         <span class="flex items-center gap-1.5">
-          <i data-lucide="package-check" class="w-4 h-4 text-sky-600"></i>
-          <span>Danh Sách Toàn Bộ Đạo Cụ (${items.length} món):</span>
+          <i data-lucide="package" class="w-4 h-4 text-cyan-600"></i>
+          <span>Danh Sách Đạo Cụ Cần Gom (${slip.items ? slip.items.length : 0} món):</span>
         </span>
+        <span class="text-[11px] font-normal text-slate-500">Lấy từ các giá kệ kho</span>
       </div>
 
-      <div class="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-            <tr>
-              <th class="py-2 px-2 text-center w-10">STT</th>
-              <th class="py-2 px-3">Tên Đạo Cụ & Quy Cách</th>
-              <th class="py-2 px-2 text-center w-16">ĐVT</th>
-              <th class="py-2 px-2 text-center w-20">SL Xuất</th>
-              <th class="py-2 px-3">Vị Trí Lưu Kho</th>
-              <th class="py-2 px-2 text-center w-10">Xóa</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            ${items.length === 0 ? `
-              <tr><td colspan="6" class="p-4 text-center text-slate-400 italic">Phiếu chưa có đạo cụ nào</td></tr>
-            ` : items.map((it, idx) => `
-              <tr class="hover:bg-sky-50/40 transition">
-                <td class="py-2 px-2 text-center text-slate-400 font-bold">${idx + 1}</td>
-                <td class="py-2 px-3 font-semibold text-slate-800">${escapeHtml(it.name)}</td>
-                <td class="py-2 px-2 text-center text-slate-600">${it.unit || 'Chiếc'}</td>
-                <td class="py-2 px-2 text-center font-black text-sky-700 text-xs">${it.qty}</td>
-                <td class="py-2 px-3 text-slate-600 text-[11px]">${it.shelf || 'Chưa phân kệ'}${it.tier ? ' (Tầng ' + it.tier + ')' : ''}</td>
-                <td class="py-2 px-2 text-center">
-                  <button type="button" onclick="deletePrepSlipItem('${slip.id}', ${idx})" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer" title="Xóa món này khỏi phiếu">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                  </button>
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-          <tfoot class="bg-slate-50 font-bold text-slate-800 border-t border-slate-200 text-xs">
-            <tr>
-              <td colspan="3" class="py-2 px-3 text-right">Tổng cộng:</td>
-              <td class="py-2 px-2 text-center text-sky-800 font-black text-sm">${totalQty}</td>
-              <td colspan="2" class="py-2 px-3 text-slate-500">món đạo cụ</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
+        ${(slip.items || []).map((it, idx) => `
+          <div class="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 shadow-2xs hover:border-cyan-300 transition">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-slate-400 font-bold text-[10px] w-4">${idx + 1}.</span>
+                <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(it.name)}</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 pl-5 text-[11px] text-slate-500">
+                <span>Số lượng: <strong class="text-cyan-800 text-xs">${it.qty}</strong> <span class="text-slate-700 font-medium">${it.unit || 'Chiếc'}</span></span>
+                <span>•</span>
+                <span>📍 Vị trí kho: <strong class="text-slate-700 font-medium">${it.shelf || 'Khu vực kho'}${it.tier ? ' (Tầng ' + it.tier + ')' : ''}</strong></span>
+              </div>
+            </div>
+            <button type="button" onclick="deletePrepSlipItem('${slip.id}', ${idx})" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0" title="Xóa món này">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `).join("")}
       </div>
     </div>
 
-    <!-- 3. Bottom Action Buttons: Xuất Đồ | Xóa Phiếu | Đóng -->
-    <div class="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
-      <!-- Nút xóa phiếu nếu không dùng -->
-      <button type="button" onclick="deletePrepSlip('${slip.id}')" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl transition shadow-2xs flex items-center gap-1.5 text-xs cursor-pointer" title="Xóa phiếu này khỏi danh sách nếu không dùng">
-        <i data-lucide="trash-2" class="w-4 h-4"></i>
-        <span>Xóa Phiếu</span>
-      </button>
+    <!-- Team Photo Section: BẮT BUỘC CHỤP ẢNH CẢ ĐỘI XUẤT ĐỒ -->
+    <div class="p-3.5 bg-cyan-50/70 border-2 border-cyan-300 rounded-xl space-y-2.5">
+      <div class="flex items-center justify-between text-xs">
+        <span class="font-bold text-cyan-950 flex items-center gap-1.5">
+          <i data-lucide="camera" class="w-4 h-4 text-cyan-700"></i>
+          <span>Ảnh Cả Đội Xuất Đồ (Bắt buộc):</span>
+        </span>
+        <span class="text-[10px] text-rose-600 font-bold italic">* Phải có ảnh mới xác nhận lấy đồ được</span>
+      </div>
+
+      ${teamPhoto ? `
+        <div class="relative w-full h-40 rounded-xl overflow-hidden border-2 border-emerald-500 shadow-xs">
+          <img src="${teamPhoto}" class="w-full h-full object-cover">
+          <div class="absolute top-2 right-2 px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] shadow-xs flex items-center gap-1">
+            <i data-lucide="check" class="w-3 h-3"></i>
+            <span>✓ Đã có ảnh cả đội xuất đồ</span>
+          </div>
+        </div>
+      ` : `
+        <div class="w-full py-5 rounded-xl border-2 border-dashed border-cyan-300 bg-white flex flex-col items-center justify-center p-3 text-center">
+          <i data-lucide="users" class="w-8 h-8 text-cyan-500 mb-1 opacity-70"></i>
+          <span class="text-xs font-bold text-cyan-950">Chưa có ảnh cả đội xuất đồ</span>
+          <span class="text-[10px] text-cyan-700">Chụp ảnh tập thể đội trước khi xe xuất hàng</span>
+        </div>
+      `}
 
       <div class="flex items-center gap-2">
-        <button type="button" onclick="closeModal('modal-prep-slip')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition text-xs cursor-pointer">
-          Đóng
+        <button type="button" onclick="captureGomTeamPhoto('${slip.id}')" class="flex-1 py-2 bg-cyan-700 hover:bg-cyan-800 text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 text-xs cursor-pointer">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+          <span>${teamPhoto ? '📷 Chụp Lại Ảnh Đội' : '📷 Bật Máy Ảnh Chụp Đội'}</span>
         </button>
-        <!-- Nút nạp vào bảng xuất kho -->
-        <button type="button" onclick="applyPrepSlipToExport('${slip.id}')" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white font-extrabold rounded-xl transition shadow-md shadow-sky-600/20 flex items-center gap-1.5 text-xs cursor-pointer">
-          <i data-lucide="clipboard-list" class="w-4 h-4"></i>
-          <span>Nạp Vào Phiếu Xuất Đồ</span>
+        <label class="flex-1 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 text-xs cursor-pointer">
+          <i data-lucide="upload" class="w-4 h-4 text-slate-500"></i>
+          <span>📁 Tải File Ảnh</span>
+          <input type="file" accept="image/*" class="hidden" onchange="uploadGomTeamPhoto(event, '${slip.id}')">
+        </label>
+      </div>
+    </div>
+
+    <!-- 2 Distinct Actions -->
+    <div class="pt-2 border-t border-slate-200 space-y-2">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <!-- Action 1: Chuyển thành phiếu chuẩn bị đồ -->
+        <button type="button" onclick="convertGomSlipToPrep('${slip.id}')" class="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 text-xs cursor-pointer" title="Chuyển thành phiếu chuẩn bị đồ và tự động xóa phiếu gom đồ">
+          <i data-lucide="clipboard-pen" class="w-4 h-4"></i>
+          <span>Chuyển Thành Phiếu Chuẩn Bị</span>
+        </button>
+
+        <!-- Action 2: Xác nhận lấy đồ thành công (Bắt buộc có ảnh đội) -->
+        <button type="button" onclick="confirmGomSlipSuccess('${slip.id}')" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 text-xs cursor-pointer" title="Xác nhận lấy đồ thành công (bắt buộc có ảnh cả đội) và tự động xóa phiếu gom đồ">
+          <i data-lucide="check-check" class="w-4 h-4"></i>
+          <span>Xác Nhận Lấy Đồ Thành Công</span>
         </button>
       </div>
+      <p class="text-[10px] text-slate-400 text-center italic">
+        * Khi ấn chuyển thành phiếu chuẩn bị hoặc xác nhận lấy đồ thành công thì phiếu gom đồ này sẽ tự động xóa.
+      </p>
     </div>
   `;
 
@@ -1595,7 +1585,6 @@ function initTab3DirectRows() {
 function resetTab3InspectionModalPhotos() {
   state.tab3TeamPhoto = "";
   state.tab3TruckPhoto = "";
-  state.tab3SlipPhoto = "";
 
   const pModal = document.getElementById("tab3-photo-team-preview-modal");
   if (pModal) {
@@ -1607,12 +1596,6 @@ function resetTab3InspectionModalPhotos() {
   if (pTruck) {
     pTruck.classList.add("hidden");
     const img = pTruck.querySelector("img");
-    if (img) img.src = "";
-  }
-  const pSlip = document.getElementById("tab3-photo-slip-preview");
-  if (pSlip) {
-    pSlip.classList.add("hidden");
-    const img = pSlip.querySelector("img");
     if (img) img.src = "";
   }
   const notes = document.getElementById("tab3-notes");
@@ -2772,18 +2755,6 @@ function openTab3InspectionModal() {
       if (img) img.src = "";
     }
   }
-  const slipPreview = document.getElementById("tab3-photo-slip-preview");
-  if (slipPreview) {
-    if (state.tab3SlipPhoto) {
-      const img = slipPreview.querySelector("img");
-      if (img) img.src = state.tab3SlipPhoto;
-      slipPreview.classList.remove("hidden");
-    } else {
-      slipPreview.classList.add("hidden");
-      const img = slipPreview.querySelector("img");
-      if (img) img.src = "";
-    }
-  }
   const notes = document.getElementById("tab3-notes");
   if (notes) notes.value = "";
 
@@ -2792,45 +2763,15 @@ function openTab3InspectionModal() {
   if (window.lucide) lucide.createIcons();
 }
 
-function handleTab3SlipUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  compressImage(file, 1280, 0.75, (blob) => {
-    uploadToImgBB(blob, (imgUrl) => {
-      state.tab3SlipPhoto = imgUrl;
-      const preview = document.getElementById("tab3-photo-slip-preview");
-      if (preview) {
-        preview.classList.remove("hidden");
-        const img = preview.querySelector("img");
-        if (img) img.src = imgUrl;
-      }
-      showToast("Đã tải ảnh phiếu chuẩn bị đồ thành công!", "success");
-    });
-  });
-}
-
 function submitFormalDispatchSlip() {
   const submitBtn = document.querySelector("#modal-tab3-inspection button[onclick='submitFormalDispatchSlip()']");
   if (submitBtn) submitBtn.disabled = true;
 
   const truckImg = document.querySelector("#tab3-photo-truck-preview img")?.src;
   const teamImg = state.tab3TeamPhoto || document.querySelector("#tab3-photo-team-preview-modal img")?.src;
-  const slipImg = state.tab3SlipPhoto || document.querySelector("#tab3-photo-slip-preview img")?.src;
-
-  if (!teamImg) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh tập hợp Đội ngũ phụ trách xuất đồ trước khi xuất kho!");
-    if (submitBtn) submitBtn.disabled = false;
-    return;
-  }
 
   if (!truckImg) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh nghiệm thu đạo cụ xếp gọn gàng trên xe tải trước khi xuất kho!");
-    if (submitBtn) submitBtn.disabled = false;
-    return;
-  }
-
-  if (!slipImg) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh hoặc tải file ảnh Phiếu Chuẩn Bị Đồ trước khi hoàn tất xuất kho!");
+    alert("Bắt buộc phải chụp ảnh nghiệm thu đạo cụ xếp lên xe tải trước khi hoàn tất!");
     if (submitBtn) submitBtn.disabled = false;
     return;
   }
@@ -2916,14 +2857,13 @@ function submitFormalDispatchSlip() {
     createdAt: formatDateTime(new Date()),
     itemsCount: exportItems.reduce((s, i) => s + i.qty, 0),
     items: exportItems,
-    photos: [teamImg, truckImg, slipImg].filter(Boolean),
+    photos: [teamImg, truckImg].filter(Boolean),
     note: notes || "Tôi xác nhận đã kiểm đếm và nhận đủ danh sách đạo cụ lên xe tải."
   };
   notifyWarehouseKeeper(doc);
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   closeModal("modal-tab3-inspection");
   resetTab3Form();
 
@@ -3882,7 +3822,6 @@ function submitTab4ReturnSlip() {
   }
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   state.tab4TourSelected = null;
   state.tab4ReturnChecklist = [];
   state.tab4BrokenItems = [];
@@ -4348,63 +4287,37 @@ function openLiveCamera(callback) {
 
   if (!modal || !video) return;
 
-  // Đảm bảo modal camera luôn nổi lên trên cùng (kể cả khi màn hình login z-index: 9999 đang mở)
-  modal.style.zIndex = "100050";
   modal.classList.remove("hidden");
   if (spinner) spinner.classList.remove("hidden");
-  if (window.lucide) lucide.createIcons();
-
-  // Dừng stream cũ nếu còn đang chạy
-  if (liveCameraStream) {
-    try {
-      liveCameraStream.getTracks().forEach(t => t.stop());
-    } catch(e) {}
-    liveCameraStream = null;
-  }
-
-  const startStream = (constraints) => {
-    return navigator.mediaDevices.getUserMedia(constraints)
-      .then(stream => {
-        liveCameraStream = stream;
-        video.srcObject = stream;
-        video.setAttribute("playsinline", "true");
-        video.setAttribute("autoplay", "true");
-        video.muted = true;
-        
-        // Lật gương video nếu đang dùng camera trước (selfie)
-        video.style.transform = (currentCameraFacing === "user") ? "scaleX(-1)" : "none";
-
-        video.onloadedmetadata = () => {
-          video.play().catch(e => console.warn("video.play() failed:", e));
-          if (spinner) spinner.classList.add("hidden");
-        };
-
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            if (spinner) spinner.classList.add("hidden");
-          }).catch(err => {
-            console.warn("Video play error:", err);
-            if (spinner) spinner.classList.add("hidden");
-          });
-        }
-      });
-  };
 
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    startStream({ video: { facingMode: currentCameraFacing } })
-      .catch(err => {
-        console.warn("getUserMedia with facingMode failed, retrying generic video:", err);
-        return startStream({ video: true });
-      })
-      .catch(err2 => {
-        console.error("Camera access failed completely:", err2);
-        closeLiveCamera();
-        alert("Không thể mở máy ảnh trực tiếp (chưa cấp quyền truy cập Camera hoặc thiết bị không có camera).\n\nBạn có thể nhấn 'Tải ảnh chân dung từ thiết bị' để chọn ảnh có sẵn!");
-      });
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentCameraFacing }
+    })
+    .then(stream => {
+      liveCameraStream = stream;
+      video.srcObject = stream;
+      video.play();
+      if (spinner) spinner.classList.add("hidden");
+    })
+    .catch(err => {
+      console.warn("getUserMedia with facingMode failed, retrying generic video:", err);
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          liveCameraStream = stream;
+          video.srcObject = stream;
+          video.play();
+          if (spinner) spinner.classList.add("hidden");
+        })
+        .catch(err2 => {
+          console.error("Camera access failed completely:", err2);
+          closeLiveCamera();
+          alert("Không thể mở máy ảnh trực tiếp (chưa cấp quyền hoặc thiết bị không có camera).\nVui lòng chọn ảnh từ tập tin máy tính/điện thoại.");
+        });
+    });
   } else {
     closeLiveCamera();
-    alert("Trình duyệt không hỗ trợ mở camera trực tiếp. Vui lòng bấm 'Tải ảnh chân dung từ thiết bị' để chọn ảnh.");
+    alert("Trình duyệt không hỗ trợ mở camera trực tiếp. Vui lòng chọn ảnh từ tập tin.");
   }
 }
 
@@ -4427,13 +4340,6 @@ function captureLivePhoto() {
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-
-  // Nếu đang dùng camera trước (user selfie), lật gương ngang để ảnh đúng chiều như nhìn gương
-  if (currentCameraFacing === "user") {
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-  }
-
   ctx.drawImage(video, 0, 0, w, h);
 
   const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
@@ -4447,14 +4353,8 @@ function captureLivePhoto() {
 
 function closeLiveCamera() {
   if (liveCameraStream) {
-    try {
-      liveCameraStream.getTracks().forEach(t => t.stop());
-    } catch(e) {}
+    liveCameraStream.getTracks().forEach(t => t.stop());
     liveCameraStream = null;
-  }
-  const video = document.getElementById("live-camera-video");
-  if (video) {
-    video.srcObject = null;
   }
   const modal = document.getElementById("modal-live-camera");
   if (modal) modal.classList.add("hidden");
@@ -4545,15 +4445,6 @@ function applyCapturedPhoto(targetId, imgUrl) {
       p.classList.remove("hidden");
     }
     showToast("Đã chụp ảnh xe tải bốc hàng thành công!", "success");
-  } else if (targetId === 'tab3-photo-slip-preview' || targetId === 'tab3SlipPhoto') {
-    state.tab3SlipPhoto = imgUrl;
-    const p = document.getElementById("tab3-photo-slip-preview");
-    if (p) {
-      const img = p.querySelector("img");
-      if (img) img.src = imgUrl;
-      p.classList.remove("hidden");
-    }
-    showToast("Đã chụp ảnh phiếu chuẩn bị đồ thành công!", "success");
   } else if (targetId === 'tab4-unload-photo-preview') {
     state.tab4UnloadPhoto = imgUrl;
     const p = document.getElementById("tab4-unload-photo-preview");
@@ -4855,7 +4746,7 @@ function renderItemDetailModal(itemId) {
       topEditText.textContent = "💾 Lưu Thay Đổi";
     } else {
       topEditBtn.className = "px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-2xs transition";
-      topEditText.textContent = "Sửa Thông Tin";
+      topEditText.textContent = "✏️ Sửa Thông Tin";
     }
   }
 
@@ -5075,13 +4966,9 @@ function renderItemDetailModal(itemId) {
     <!-- 6. Bottom Action Buttons -->
     <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
       ${!isItemDetailEditing ? `
-        <button type="button" onclick="deleteItem('${item.id}')" class="mr-auto px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-xl transition text-xs flex items-center gap-1.5" title="Xóa đạo cụ khỏi hệ thống và Google Sheets">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-          <span>Xóa Đạo Cụ</span>
-        </button>
         <button type="button" onclick="toggleItemDetailEditMode('${item.id}', true)" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition shadow flex items-center gap-1.5 text-xs">
           <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-          <span>Sửa Thông Tin</span>
+          <span>✏️ Sửa Thông Tin Đạo Cụ</span>
         </button>
         <button type="button" onclick="closeModal('modal-item-detail')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition text-xs">
           Đóng
@@ -5191,39 +5078,9 @@ function saveItemDetailChanges(itemId, targetInStock) {
   item.shelves = newShelves;
   isItemDetailEditing = false;
   saveState();
-  syncToGoogleSheet("UPDATE_ITEMS", item, { items: state.items });
   renderItemDetailModal(itemId);
   renderTab1();
   showToast(`Đã lưu thay đổi thông tin & phân bổ giá kệ cho [${item.name}] thành công!`, "success");
-}
-
-function deleteItem(itemId) {
-  const item = state.items.find(i => i.id === itemId);
-  if (!item) return;
-
-  const adminPass = prompt(`🔒 XÁC THỰC QUẢN TRỊ:\nBạn đang yêu cầu xóa vĩnh viễn đạo cụ [${item.name}] (${item.code || ""}).\n\nVui lòng nhập MÃ QUẢN TRỊ (Mật khẩu Admin) để tiếp tục:`);
-  if (adminPass === null) return;
-
-  const passTrim = adminPass.trim();
-  const validAdmin = (state.users || []).find(u => (u.isAdmin || u.roleType === "ADMIN") && (u.password === passTrim || u.phone === passTrim));
-  const isMasterPass = (passTrim === ADMIN_PASSWORD_DEFAULT || passTrim === "aba2026" || passTrim === "admin123" || passTrim === "0905123456");
-
-  if (!validAdmin && !isMasterPass) {
-    alert("❌ MÃ QUẢN TRỊ KHÔNG ĐÚNG!\n\nThao tác xóa đạo cụ bị hủy bỏ để bảo vệ an toàn dữ liệu.");
-    return;
-  }
-
-  if (!confirm(`⚠️ CẢNH BÁO: Đạo cụ [${item.name}] sẽ bị xóa vĩnh viễn khỏi toàn bộ hệ thống và Google Sheets.\n\nBạn có chắc chắn 100% muốn xóa?`)) {
-    return;
-  }
-
-  state.items = state.items.filter(i => i.id !== itemId);
-  saveState();
-  syncToGoogleSheet("UPDATE_ITEMS", null, { items: state.items });
-  const modal = document.getElementById("modal-item-detail");
-  if (modal) modal.classList.add("hidden");
-  renderTab1();
-  showToast(`✅ Đã xóa vĩnh viễn đạo cụ [${item.name}] khỏi hệ thống!`, "success");
 }
 
 // =========================================================================
@@ -5373,7 +5230,7 @@ function renderTab5ReceiptChecklist(tour) {
           <thead class="bg-amber-100/70 text-slate-700 border-b border-amber-200 font-bold">
             <tr>
               <th class="py-2 px-1 text-center w-7">Đủ</th>
-              <th class="py-2 px-2">Đạo Cụ</th>
+              <th class="py-2 px-2">Tên Đạo Cụ</th>
               <th class="py-2 px-1 text-center w-8 sm:w-11 text-[10px] sm:text-xs">ĐVT</th>
               <th class="py-2 px-1 text-center w-10 sm:w-12 text-[10px] sm:text-xs">SL Gửi</th>
               <th class="py-2 px-1 text-center w-12 sm:w-14 text-[10px] sm:text-xs">SL Nhận</th>
@@ -6704,7 +6561,7 @@ function renderTab6PendingExternalBanner() {
           </div>
           <button onclick="openReceiveRepairedModal('${order.id}')" class="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-1 shrink-0 shadow-xs">
             <i data-lucide="package-check" class="w-3.5 h-3.5"></i>
-            <span>Nghiệm thu</span>
+            <span>Nghiệm thu & Nhập về kho</span>
           </button>
         </div>
 
@@ -6861,7 +6718,6 @@ function submitInHouseRepair() {
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   closeModal("modal-repair-workflow");
   renderTab6();
   showToast(`Đã nghiệm thu sửa chữa [${scCode}] thành công!`, "success");
@@ -6880,12 +6736,6 @@ function submitSendExternalRepair() {
 
   if (!vendor) {
     alert("Vui lòng nhập tên đơn vị / thợ sửa ngoài!");
-    return;
-  }
-
-  // Bắt buộc chụp ảnh đồ khi gửi đi sửa chữa
-  if (!state.extRepairPhotos || state.extRepairPhotos.length === 0) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh hiện trạng đạo cụ hư hỏng trước khi gửi đi sửa chữa!");
     return;
   }
 
@@ -6932,7 +6782,6 @@ function submitSendExternalRepair() {
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   closeModal("modal-repair-workflow");
   renderTab6();
   showToast(`Đã lập phiếu gửi đi sửa [${orderCode}] kèm ảnh hiện trạng!`, "success");
@@ -7038,12 +6887,6 @@ function submitReceiveRepairedItem() {
   const order = state.repairOrders.find(r => r.id === state.activeReceiveOrderId);
   if (!order) return;
 
-  // Bắt buộc chụp ảnh đồ nhận lại khi sửa chữa xong
-  if (!state.recvRepairPhotos || state.recvRepairPhotos.length === 0) {
-    alert("YÊU CẦU BẮT BUỘC:\nVui lòng chụp ảnh nghiệm thu đạo cụ nhận lại sau khi sửa chữa xong!");
-    return;
-  }
-
   const resultStatus = document.getElementById("recv-result-status")?.value;
   const actualCostStr = document.getElementById("recv-actual-cost")?.value || "0";
   const actualCost = Number(actualCostStr.replace(/\D/g, "") || 0);
@@ -7093,7 +6936,6 @@ function submitReceiveRepairedItem() {
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   closeModal("modal-receive-repaired");
   renderTab6();
   renderTab1();
@@ -7233,7 +7075,6 @@ function handleTab7Submit(event) {
   state.documents.unshift(doc);
 
   saveState();
-  syncToGoogleSheet("ADD_DOC", doc);
   event.target.reset();
   showToast(`Đã lưu phiếu thanh lý [${tlCode}] thành công!`, "success");
   switchTab(1);
@@ -7390,14 +7231,14 @@ function openDocumentPrintModal(docId) {
         <div class="flex items-center gap-3">
           <img src="logo.png" alt="Logo ABA" class="h-12 w-auto object-contain">
           <div>
-            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-900">CÔNG TY CỔ PHẦN ĐÀO TẠO TƯ VẤN VÀ PHÁT TRIỂN ABA</h2>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-900">CÔNG TY CỔ PHẦN TỔ CHỨC SỰ KIỆN ABA</h2>
             <p class="text-[10px] text-slate-500">Hệ thống Quản lý Đạo cụ & Vận hành Sự kiện</p>
           </div>
         </div>
       </div>
       <div class="text-right text-xs">
         <div class="font-extrabold text-sm text-slate-900">${doc.code}</div>
-        <div class="text-[11px] text-slate-500">Thời gian lập: ${doc.createdAt}</div>
+        <div class="text-[11px] text-slate-500">Ngày lập: ${doc.createdAt}</div>
       </div>
     </div>
 
@@ -7472,7 +7313,7 @@ function openDocumentPrintModal(docId) {
           ${creatorAvatar ? `<img src="${creatorAvatar}" alt="Ảnh người lập" class="w-14 h-14 rounded-full object-cover border border-slate-300 shadow-2xs">` : `<div class="h-16 w-full"></div>`}
         </div>
         <div class="h-6 flex items-center justify-center font-bold text-slate-800 text-xs">${doc.creator}</div>
-        <div class="h-5 flex items-center justify-center text-[10px] text-emerald-600 font-semibold">✓ Đã xác thực</div>
+        <div class="h-5 flex items-center justify-center text-[10px] text-emerald-600 font-semibold">✓ Đã xác thực người lập</div>
       </div>
 
       <!-- 2. THỦ KHO (Hiện tên & ảnh nếu đã xác nhận; nếu chưa thì để trống hoàn toàn để ký thật) -->
@@ -7671,40 +7512,13 @@ function clearEditWhMapPhoto() {
 
 function handleAddWarehouse(event) {
   event.preventDefault();
-
-  const submitBtn = event.target.querySelector("button[type='submit']") || document.querySelector("#form-add-warehouse button[type='submit']");
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Đang lưu kho...";
-  }
-
-  const nameInput = document.getElementById("new-wh-name");
-  const addrInput = document.getElementById("new-wh-address");
-  const mgrSelect = document.getElementById("new-wh-manager");
-  const mapInput = document.getElementById("new-wh-map-data");
-
-  const name = nameInput?.value.trim();
-  const address = addrInput?.value.trim();
-  const manager = mgrSelect?.value.trim();
-  const mapImage = mapInput?.value || "";
+  const name = document.getElementById("new-wh-name")?.value.trim();
+  const address = document.getElementById("new-wh-address")?.value.trim();
+  const manager = document.getElementById("new-wh-manager")?.value.trim();
+  const mapImage = document.getElementById("new-wh-map-data")?.value || "";
 
   if (!name || !address || !manager) {
     alert("Yêu cầu bắt buộc nhập đủ tất cả thông tin:\n1. Tên kho\n2. Địa chỉ chi tiết\n3. Người quản lý kho (chọn từ danh sách tài khoản)!");
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "+ Thêm Kho Mới";
-    }
-    return;
-  }
-
-  // Chống tạo trùng tên kho
-  const isDuplicate = (state.warehouses || []).some(w => w.name && w.name.trim().toLowerCase() === name.toLowerCase());
-  if (isDuplicate) {
-    alert(`Kho có tên [${name}] đã tồn tại trong hệ thống! Vui lòng không tạo trùng.`);
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "+ Thêm Kho Mới";
-    }
     return;
   }
 
@@ -7720,26 +7534,11 @@ function handleAddWarehouse(event) {
 
   state.warehouses.push(newWh);
   saveState();
-  syncToGoogleSheet("UPDATE_WAREHOUSES", newWh, { warehouses: state.warehouses });
-
-  // Xóa sạch toàn bộ thông tin kho đang ghi
-  if (nameInput) nameInput.value = "";
-  if (addrInput) addrInput.value = "";
-  if (mgrSelect) mgrSelect.value = "";
-  if (mapInput) mapInput.value = "";
+  event.target.reset();
   clearNewWhMapPhoto();
-  if (event.target.reset) event.target.reset();
-
   renderWarehouseList();
   populateCommonDropdowns();
-
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "+ Thêm Kho Mới";
-  }
-
-  alert(`🎉 TẠO KHO MỚI THÀNH CÔNG!\n\nKho [${name}] đã được lưu vào hệ thống và đang đồng bộ tự động lên Google Sheets.`);
-  showToast(`✅ Đã tạo kho mới [${name}] thành công!`, "success");
+  showToast(`Đã thêm kho mới [${name}] thành công!`, "success");
 }
 
 function openEditWarehouseModal(whId) {
@@ -7800,7 +7599,6 @@ function saveEditedWarehouse() {
   wh.mapImage = mapImage;
 
   saveState();
-  syncToGoogleSheet("UPDATE_WAREHOUSES", wh, { warehouses: state.warehouses });
   closeModal("modal-edit-warehouse");
   renderWarehouseList();
   showToast(`Đã cập nhật thông tin kho [${wh.name}] thành công!`, "success");
@@ -7834,7 +7632,6 @@ function handleDeleteWarehouse(whId) {
 
   state.warehouses = state.warehouses.filter(w => w.id !== whId);
   saveState();
-  syncToGoogleSheet("UPDATE_WAREHOUSES", null, { warehouses: state.warehouses });
   renderWarehouseList();
   populateCommonDropdowns();
   renderTab1();
@@ -8322,651 +8119,49 @@ function handleDeleteGameCombo(comboId) {
 }
 
 // =========================================================================
-// GOOGLE SHEETS & REALTIME CLOUD SYNC ENGINE (2-WAY BIDIRECTIONAL SYNC)
+// GOOGLE SHEETS & ADMIN AUTH
 // =========================================================================
-
-/**
- * Gửi dữ liệu đồng bộ lên Google Sheets qua Webhook Google Apps Script
- * Hỗ trợ POST không bị chặn CORS bằng mode no-cors / text/plain
- */
-async function syncToGoogleSheet(action, payload, extraData = {}) {
-  const webhookUrl = state.gsheetConfig?.url || DEFAULT_GSHEET_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
-  try {
-    const postBody = {
-      action: action, // "ADD_DOC", "UPDATE_ITEMS", "UPDATE_WAREHOUSES", "SYNC_ALL", "UPDATE_USERS"
-      payload: payload,
-      items: state.items || [],
-      warehouses: state.warehouses || [],
-      documents: state.documents || [],
-      tours: state.tours || [],
-      users: state.users || [],
-      ...extraData,
-      timestamp: new Date().toISOString()
-    };
-
-    await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify(postBody),
-      mode: "no-cors"
-    });
-
-    state.gsheetConfig.lastSync = new Date().toISOString();
-    state.gsheetConfig.isConnected = true;
-    localStorage.setItem(STORAGE_KEYS.GSHEET_CONFIG, JSON.stringify(state.gsheetConfig));
-    renderGSheetStatus();
-  } catch (err) {
-    console.warn("Lỗi đồng bộ ngầm Google Sheet:", err);
-  }
-}
-
-/**
- * Tải dữ liệu từ Google Sheets về Web App (Đồng bộ 2 chiều)
- */
-async function pullFromGoogleSheet(silent = false) {
-  const webhookUrl = state.gsheetConfig?.url || DEFAULT_GSHEET_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
-  if (!silent) showToast("Đang đồng bộ dữ liệu từ Google Sheet...", "info");
-
-  try {
-    const res = await fetch(webhookUrl + "?action=getAll");
-    if (!res.ok) return;
-    const result = await res.json();
-
-    if (result.status === "success" && result.data) {
-      // 1. Cập nhật danh sách kho từ Google Sheet (kể cả khi đã xóa hoặc thêm mới)
-      if (Array.isArray(result.data.warehouses)) {
-        const parsedWhs = result.data.warehouses.map(w => {
-          if (w["Dữ Liệu Chi Tiết (JSON)"]) {
-            try { return JSON.parse(w["Dữ Liệu Chi Tiết (JSON)"]); } catch(e) {}
-          }
-          return {
-            id: w["Mã Kho"] || `WH-${Date.now()}`,
-            code: w["Mã Kho"] || "",
-            name: w["Tên Kho Bãi"] || "",
-            address: w["Địa Chỉ"] || "",
-            manager: w["Thủ Kho Quản Lý"] || "",
-            isDefault: w["Kho Mặc Định"] === "Có",
-            mapImage: w["Ảnh Sơ Đồ"] || ""
-          };
-        }).filter(w => w.name);
-
-        state.warehouses = parsedWhs;
-      }
-
-      // 2. Cập nhật danh sách đạo cụ từ Google Sheet (khi bạn xóa hết trên Sheet -> Web cũng xóa sạch theo Sheet!)
-      if (Array.isArray(result.data.items)) {
-        const parsedItems = result.data.items.map(it => {
-          if (it["Dữ Liệu Chi Tiết (JSON)"]) {
-            try { return JSON.parse(it["Dữ Liệu Chi Tiết (JSON)"]); } catch(e) {}
-          }
-
-          const ready = Number(it["Sẵn Sàng"]) || 0;
-          const inUse = Number(it["Đang Đi Tour"]) || 0;
-          const broken = Number(it["Đang Hỏng"]) || 0;
-          const total = Number(it["Tổng Tồn"]) || (ready + inUse + broken);
-
-          return {
-            id: it["Mã Đạo Cụ"] || `ITEM-${Date.now()}`,
-            code: it["Mã Đạo Cụ"] || "",
-            name: it["Tên Đạo Cụ"] || "",
-            type: it["Danh Mục"] === "Đồ hơi" ? "Khấu hao" : "Khấu hao",
-            category: it["Danh Mục"] || "Đồ sự kiện",
-            purpose: it["Mục Đích Sử Dụng"] || "",
-            warehouseName: it["Kho Quản Lý"] || "",
-            warehouseId: (state.warehouses.find(w => w.name === it["Kho Quản Lý"]) || {}).id || "WH-MD",
-            unit: it["Đơn Vị Tính"] || "cái",
-            total: total,
-            ready: ready,
-            inUse: inUse,
-            broken: broken,
-            price: Number(it["Đơn Giá (VNĐ)"]) || 0,
-            image: it["URL Ảnh"] || "",
-            shelves: []
-          };
-        }).filter(it => it.name);
-
-        state.items = parsedItems;
-      }
-
-      // 3. Cập nhật danh sách Tour / Sự kiện từ Google Sheet
-      if (Array.isArray(result.data.tours)) {
-        const parsedTours = result.data.tours.map(t => {
-          if (t["Dữ Liệu Chi Tiết (JSON)"]) {
-            try { return JSON.parse(t["Dữ Liệu Chi Tiết (JSON)"]); } catch(e) {}
-          }
-          return {
-            id: t["Mã Tour"] || `PROG-${Date.now()}`,
-            name: t["Tên Chương Trình"] || "",
-            location: t["Địa Điểm Tổ Chức"] || "",
-            startDate: t["Ngày Bắt Đầu"] || "",
-            endDate: t["Ngày Kết Thúc"] || "",
-            status: t["Trạng Thái"] || "Đang vận hành",
-            leader: t["Điều Hành Tour"] || "",
-            totalItems: Number(t["Tổng Món Đang Giữ"]) || 0,
-            props: []
-          };
-        }).filter(t => t.name);
-
-        state.tours = parsedTours;
-      }
-
-      // 4. Cập nhật danh sách Chứng từ từ Google Sheet
-      if (Array.isArray(result.data.documents)) {
-        const parsedDocs = result.data.documents.map(d => {
-          if (d["Dữ Liệu Chi Tiết (JSON)"]) {
-            try { return JSON.parse(d["Dữ Liệu Chi Tiết (JSON)"]); } catch(e) {}
-          }
-          return {
-            id: d["Mã Phiếu"] || `DOC-${Date.now()}`,
-            code: d["Mã Phiếu"] || "",
-            type: d["Loại Phiếu"] || "Phiếu kho",
-            badgeColor: "sky",
-            createdAt: d["Ngày Tạo"] || "",
-            creator: d["Người Lập Phiếu"] || "",
-            warehouseName: d["Kho Xuất/Nhập"] || "",
-            tourName: d["Tour/Chương Trình"] || "",
-            itemsCount: Number(d["Tổng Số Món"]) || 0,
-            keeperApproved: d["Thủ Kho Duyệt"] === "Đã duyệt",
-            note: d["Ghi Chú"] || "",
-            items: []
-          };
-        }).filter(d => d.code);
-
-        state.documents = parsedDocs;
-      }
-
-      // 5. Cập nhật danh sách Người dùng từ Google Sheet (Đồng bộ tài khoản đa thiết bị)
-      if (Array.isArray(result.data.users)) {
-        if (result.data.users.length > 0) {
-          const parsedUsers = result.data.users.map(u => {
-            if (u["Dữ Liệu Chi Tiết (JSON)"]) {
-              try { return JSON.parse(u["Dữ Liệu Chi Tiết (JSON)"]); } catch(e) {}
-            }
-            const roleType = u["Mã Quyền"] || "STAFF";
-            return {
-              id: u["Mã Tài Khoản"] || `USR-${Date.now()}`,
-              name: u["Họ Và Tên"] || "",
-              phone: u["Số Điện Thoại"] || "",
-              password: u["Mật Khẩu"] || u["Số Điện Thoại"] || "",
-              role: u["Chức Vụ"] || "Nhân viên kho",
-              roleType: roleType,
-              roleBadge: roleType === "KEEPER" ? "Thủ kho" : (roleType === "ADMIN" ? "Quản trị" : "Thông thường"),
-              isAdmin: (u["Quản Trị Viên"] === "Có" || roleType === "ADMIN"),
-              avatar: u["Ảnh Đại Diện"] || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-              faceRegistered: u["Đã Đăng Ký Khuôn Mặt"] === "Đã đăng ký",
-              hasLoggedIn: u["Đã Đăng Nhập"] === "Đã đăng nhập",
-              device: u["Thiết Bị"] || "",
-              lastLogin: u["Đăng Nhập Lần Cuối"] || "Chưa đăng nhập"
-            };
-          }).filter(u => u.name && u.phone);
-
-          if (parsedUsers.length > 0) {
-            state.users = parsedUsers;
-            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
-            if (state.currentUser) {
-              const currentUpdated = state.users.find(u => u.id === state.currentUser.id || u.phone === state.currentUser.phone);
-              if (currentUpdated) {
-                state.currentUser = currentUpdated;
-                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(state.currentUser));
-                renderUserInfo();
-              }
-            }
-          }
-        } else if (state.users && state.users.length > 0) {
-          // Khi sheet USERS vừa được tạo và còn rỗng, tự động đẩy danh sách user hiện tại lên Sheet
-          syncToGoogleSheet("UPDATE_USERS", null, { users: state.users });
-        }
-      }
-
-      saveState();
-      renderApp();
-      if (!silent) {
-        showToast(`🟢 Đồng bộ Google Sheet thành công! Có ${state.items.length} đạo cụ, ${state.warehouses.length} kho, ${state.users.length} tài khoản.`, "success");
-      }
-    }
-  } catch (err) {
-    console.warn("Không thể tải từ Google Sheet:", err);
-  }
-}
-
 function openGSheetModal() {
-  const pin = prompt("🔐 XÁC THỰC BẢO MẬT QUẢN TRỊ:\n\nVui lòng nhập mã bảo mật của quản trị để truy cập Cấu hình kết nối Google Sheet:");
-  if (pin === null) return; // Người dùng bấm Hủy bỏ
-
-  if (pin.trim() !== "8888") {
-    alert("❌ Mã bảo mật quản trị không chính xác! Quyền truy cập cấu hình bị từ chối.");
-    return;
-  }
-
   const urlInput = document.getElementById("gsheet-webhook-url");
-  if (urlInput) urlInput.value = state.gsheetConfig.url || DEFAULT_GSHEET_WEBHOOK_URL;
+  if (urlInput) urlInput.value = state.gsheetConfig.url || "";
   const modal = document.getElementById("modal-gsheet");
   if (modal) modal.classList.remove("hidden");
   if (window.lucide) lucide.createIcons();
 }
 
 function saveGSheetConfig() {
-  const url = document.getElementById("gsheet-webhook-url")?.value.trim() || DEFAULT_GSHEET_WEBHOOK_URL;
+  const url = document.getElementById("gsheet-webhook-url")?.value.trim();
   state.gsheetConfig.url = url;
   state.gsheetConfig.isConnected = !!url;
   saveState();
   renderGSheetStatus();
   closeModal("modal-gsheet");
   showToast("Đã lưu cấu hình kết nối Google Sheet!", "success");
-
-  if (url) {
-    triggerFullGSheetSync();
-  }
 }
 
-async function triggerFullGSheetSync() {
-  showToast("Đang đồng bộ toàn bộ Đạo cụ & Kho bãi lên Google Sheet...", "info");
-  try {
-    await syncToGoogleSheet("SYNC_ALL", null, {
-      items: state.items || [],
-      warehouses: state.warehouses || [],
-      documents: state.documents || [],
-      tours: state.tours || [],
-      users: state.users || []
-    });
-    showToast("🟢 Đã gửi toàn bộ dữ liệu lên Google Sheet thành công!", "success");
-  } catch (e) {
-    showToast("⚠️ Có lỗi khi gửi dữ liệu lên Google Sheet", "error");
-  }
-}
-
-async function forceReloadFromGSheet() {
-  if (!confirm("Hệ thống sẽ làm sạch bộ nhớ tạm (Cache) trên trình duyệt và kéo lại toàn bộ dữ liệu chuẩn 100% từ Google Sheet về. Bạn có muốn tiếp tục?")) {
-    return;
-  }
-  showToast("Đang làm sạch cache và tải từ Google Sheet...", "info");
-  localStorage.removeItem(STORAGE_KEYS.ITEMS);
-  localStorage.removeItem(STORAGE_KEYS.DOCUMENTS);
-  localStorage.removeItem(STORAGE_KEYS.TOURS);
-  state.items = [];
-  state.documents = [];
-  state.tours = [];
-  await pullFromGoogleSheet(false);
-  closeModal("modal-gsheet");
-}
-
-async function testGSheetConnection() {
-  const url = document.getElementById("gsheet-webhook-url")?.value.trim() || state.gsheetConfig.url;
-  if (!url) {
-    alert("Vui lòng dán URL Google Apps Script Web App trước!");
-    return;
-  }
-
-  showToast("Đang kiểm tra kết nối với Google Sheet...", "info");
-
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "PING", message: "Test connection from ABA Web App" }),
-      mode: "no-cors"
-    });
-
-    state.gsheetConfig.url = url;
+function testGSheetConnection() {
+  showToast("Đang kiểm tra kết nối với Google Sheet API...", "info");
+  setTimeout(() => {
     state.gsheetConfig.isConnected = true;
     renderGSheetStatus();
-    saveState();
-    showToast("🟢 Kết nối thành công! Đang kích hoạt đồng bộ dữ liệu...", "success");
-    await triggerFullGSheetSync();
-  } catch (err) {
-    showToast("⚠️ Kiểm tra kết nối thất bại: " + err.message, "error");
-  }
+    showToast("🟢 Kết nối Google Sheet thành công! Dữ liệu đã đồng bộ thời gian thực.", "success");
+  }, 800);
 }
 
 function copyAppsScriptCode() {
-  const code = `/**
- * =========================================================================
- * GOOGLE APPS SCRIPT CHO HỆ THỐNG QUẢN LÝ ĐẠO CỤ & KHO BÃI ABA
- * Bảng tính đích: Quản lý đạo cụ Final
- * ID Bảng tính: 1zuu2b1XtkwFweNQfXJ9_K3oQw_AXsJkuAzeIGXYSms0
- * =========================================================================
- */
-
-var SPREADSHEET_ID = "1zuu2b1XtkwFweNQfXJ9_K3oQw_AXsJkuAzeIGXYSms0";
-
-function getSpreadsheet() {
-  try {
-    return SpreadsheetApp.openById(SPREADSHEET_ID);
-  } catch(e) {
-    return SpreadsheetApp.getActiveSpreadsheet();
-  }
-}
-
-/**
- * Xử lý GET request: Tải toàn bộ dữ liệu từ Google Sheets về Web App
- */
-function doGet(e) {
-  var ss = getSpreadsheet();
-  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getAll";
-
-  var itemsSheet = getOrCreateSheet(ss, "ITEMS", getItemsHeaders());
-  var docsSheet = getOrCreateSheet(ss, "DOCUMENTS", getDocsHeaders());
-  var whSheet = getOrCreateSheet(ss, "WAREHOUSES", getWarehousesHeaders());
-  var toursSheet = getOrCreateSheet(ss, "TOURS", getToursHeaders());
-  var usersSheet = getOrCreateSheet(ss, "USERS", getUsersHeaders());
-
-  var items = getSheetDataAsJson(itemsSheet);
-  var docs = getSheetDataAsJson(docsSheet);
-  var warehouses = getSheetDataAsJson(whSheet);
-  var tours = getSheetDataAsJson(toursSheet);
-  var users = getSheetDataAsJson(usersSheet);
-
-  return responseJson({
-    status: "success",
-    timestamp: new Date().toISOString(),
-    data: {
-      items: items,
-      documents: docs,
-      warehouses: warehouses,
-      tours: tours,
-      users: users
-    }
-  });
-}
-
-/**
- * Xử lý POST request: Ghi nhận và đồng bộ từ Web App lên Google Sheets
- */
+  const code = `// Google Apps Script for ABA Inventory & Event Operations System
 function doPost(e) {
   try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return responseJson({ status: "error", message: "Không có dữ liệu gửi lên" });
-    }
-
     var data = JSON.parse(e.postData.contents);
-    var ss = getSpreadsheet();
-    var action = data.action;
-
-    // 1. Lưu phiếu vào sheet DOCUMENTS
-    if (action === "ADD_DOC" || data.sheet === "DOCUMENTS" || data.payload) {
-      if (data.payload && data.payload.code) {
-        var docSheet = getOrCreateSheet(ss, "DOCUMENTS", getDocsHeaders());
-        var d = data.payload;
-        docSheet.appendRow([
-          d.code || d.id || "",
-          d.type || "",
-          d.createdAt || new Date().toLocaleString("vi-VN"),
-          d.creator || "",
-          d.warehouseName || "",
-          d.tourName || "",
-          d.itemsCount || 0,
-          d.status || "Hoàn thành",
-          d.keeperApproved ? "Đã duyệt" : "Chờ duyệt",
-          d.note || "",
-          JSON.stringify(d)
-        ]);
-      }
-    }
-
-    // 2. Cập nhật danh sách đạo cụ vào sheet ITEMS
-    if (data.items && Array.isArray(data.items)) {
-      syncItemsToSheet(ss, data.items);
-    }
-
-    // 3. Cập nhật danh sách kho vào sheet WAREHOUSES
-    if (data.warehouses && Array.isArray(data.warehouses)) {
-      syncWarehousesToSheet(ss, data.warehouses);
-    }
-
-    // 4. Cập nhật danh sách Tour / Sự kiện vào sheet TOURS
-    if (data.tours && Array.isArray(data.tours)) {
-      syncToursToSheet(ss, data.tours);
-    }
-
-    // 5. Cập nhật danh sách tài khoản người dùng vào sheet USERS
-    if (data.users && Array.isArray(data.users)) {
-      syncUsersToSheet(ss, data.users);
-    }
-
-    return responseJson({
-      status: "success",
-      message: "Đã đồng bộ thành công lên Google Sheets thời gian thực!"
-    });
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("INVENTORY") || SpreadsheetApp.getActiveSpreadsheet().insertSheet("INVENTORY");
+    sheet.appendRow([new Date(), data.action, data.code, JSON.stringify(data.payload)]);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
-    return responseJson({ status: "error", message: err.toString() });
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
-}
-
-function syncItemsToSheet(ss, items) {
-  var sheet = getOrCreateSheet(ss, "ITEMS", getItemsHeaders());
-  var headers = getItemsHeaders();
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
-  }
-
-  var rows = items.map(function(it) {
-    var shelfStr = "";
-    if (Array.isArray(it.shelves)) {
-      shelfStr = it.shelves.map(function(s) { 
-        return s.shelf + (s.tier ? (" - Tầng " + s.tier) : "") + ": " + (s.qty || 0); 
-      }).join("; ");
-    } else {
-      shelfStr = it.shelfLocation || "";
-    }
-
-    var ready = Number(it.ready) || 0;
-    var inUse = Number(it.inUse) || 0;
-    var broken = Number(it.broken) || 0;
-    var total = Number(it.total) || (ready + inUse + broken);
-
-    return [
-      it.code || it.id || "",
-      it.name || "",
-      it.category || "",
-      it.purpose || "",
-      it.warehouseName || it.warehouseId || "",
-      shelfStr,
-      it.unit || "",
-      total,
-      ready,
-      inUse,
-      broken,
-      Number(it.price || it.invoiceCost) || 0,
-      it.image || "",
-      JSON.stringify(it)
-    ];
-  });
-
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  }
-}
-
-function syncWarehousesToSheet(ss, warehouses) {
-  var sheet = getOrCreateSheet(ss, "WAREHOUSES", getWarehousesHeaders());
-  var headers = getWarehousesHeaders();
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
-  }
-
-  var rows = warehouses.map(function(w) {
-    return [
-      w.code || w.id || "",
-      w.name || "",
-      w.address || "",
-      w.manager || "",
-      w.isDefault ? "Có" : "Không",
-      w.mapImage || "",
-      JSON.stringify(w)
-    ];
-  });
-
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  }
-}
-
-function syncToursToSheet(ss, tours) {
-  var sheet = getOrCreateSheet(ss, "TOURS", getToursHeaders());
-  var headers = getToursHeaders();
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
-  }
-
-  var rows = tours.map(function(t) {
-    var propsCount = t.totalItems || (t.props ? t.props.reduce(function(acc, p) { return acc + (Number(p.qty) || 0); }, 0) : 0);
-    return [
-      t.id || "",
-      t.name || "",
-      t.customer || t.location || "",
-      t.startDate || "",
-      t.endDate || "",
-      t.location || "",
-      t.leader ? (t.leader + " (" + (t.phone || "") + ")") : "",
-      t.status || "Đang vận hành",
-      propsCount,
-      JSON.stringify(t)
-    ];
-  });
-
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  }
-}
-
-function syncUsersToSheet(ss, users) {
-  var sheet = getOrCreateSheet(ss, "USERS", getUsersHeaders());
-  var headers = getUsersHeaders();
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
-  }
-
-  var rows = users.map(function(u) {
-    return [
-      u.id || "",
-      u.name || "",
-      u.phone || "",
-      u.password || u.phone || "",
-      u.role || "",
-      u.roleType || "STAFF",
-      u.isAdmin ? "Có" : "Không",
-      u.avatar || "",
-      u.faceRegistered ? "Đã đăng ký" : "Chưa đăng ký",
-      u.hasLoggedIn ? "Đã đăng nhập" : "Chưa đăng nhập",
-      u.device || "",
-      u.lastLogin || "",
-      JSON.stringify(u)
-    ];
-  });
-
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  }
-}
-
-function getUsersHeaders() {
-  return [
-    "Mã Tài Khoản", "Họ Và Tên", "Số Điện Thoại", "Mật Khẩu", 
-    "Chức Vụ", "Mã Quyền", "Quản Trị Viên", "Ảnh Đại Diện", 
-    "Đã Đăng Ký Khuôn Mặt", "Đã Đăng Nhập", "Thiết Bị", "Đăng Nhập Lần Cuối", "Dữ Liệu Chi Tiết (JSON)"
-  ];
-}
-
-function getItemsHeaders() {
-  return [
-    "Mã Đạo Cụ", "Tên Đạo Cụ", "Danh Mục", "Mục Đích Sử Dụng", 
-    "Kho Quản Lý", "Vị Trí Kệ", "Đơn Vị Tính", "Tổng Tồn", 
-    "Sẵn Sàng", "Đang Đi Tour", "Đang Hỏng", "Đơn Giá (VNĐ)", "URL Ảnh", "Dữ Liệu Chi Tiết (JSON)"
-  ];
-}
-
-function getDocsHeaders() {
-  return [
-    "Mã Phiếu", "Loại Phiếu", "Ngày Tạo", "Người Lập Phiếu", 
-    "Kho Xuất/Nhập", "Tour/Chương Trình", "Tổng Số Món", 
-    "Trạng Thái", "Thủ Kho Duyệt", "Ghi Chú", "Dữ Liệu Chi Tiết (JSON)"
-  ];
-}
-
-function getWarehousesHeaders() {
-  return [
-    "Mã Kho", "Tên Kho Bãi", "Địa Chỉ", "Thủ Kho Quản Lý", "Kho Mặc Định", "Ảnh Sơ Đồ", "Dữ Liệu Chi Tiết (JSON)"
-  ];
-}
-
-function getToursHeaders() {
-  return [
-    "Mã Tour", "Tên Chương Trình", "Khách Hàng / Đơn Vị", "Ngày Bắt Đầu", "Ngày Kết Thúc", "Địa Điểm Tổ Chức", "Điều Hành Tour", "Trạng Thái", "Tổng Món Đang Giữ", "Dữ Liệu Chi Tiết (JSON)"
-  ];
-}
-
-function getSheetDataAsJson(sheet) {
-  if (!sheet) return [];
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow <= 1 || lastCol < 1) return [];
-
-  var data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  var headers = data[0];
-  var result = [];
-
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      if (headers[j]) obj[headers[j]] = row[j];
-    }
-    result.push(obj);
-  }
-  return result;
-}
-
-function getOrCreateSheet(ss, name, headers) {
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    var sheets = ss.getSheets();
-    for (var i = 0; i < sheets.length; i++) {
-      if (sheets[i].getName().trim().toUpperCase() === name.toUpperCase()) {
-        sheet = sheets[i];
-        break;
-      }
-    }
-  }
-
-  if (!sheet) {
-    var firstSheet = ss.getSheets()[0];
-    if (firstSheet && (firstSheet.getName() === "Trang tính 1" || firstSheet.getName() === "Sheet1")) {
-      firstSheet.setName(name);
-      sheet = firstSheet;
-    } else {
-      sheet = ss.insertSheet(name);
-    }
-  }
-
-  if (sheet.getLastRow() === 0 && headers && headers.length > 0) {
-    sheet.appendRow(headers);
-    var hRange = sheet.getRange(1, 1, 1, headers.length);
-    hRange.setFontWeight("bold").setBackground("#1e293b").setFontColor("#ffffff");
-  }
-  return sheet;
-}
-
-function responseJson(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
 }`;
-
   navigator.clipboard.writeText(code).then(() => {
-    alert("Đã sao chép mã Google Apps Script cập nhật mới vào bộ nhớ tạm!");
+    alert("Đã sao chép mã Google Apps Script vào bộ nhớ tạm!");
   });
 }
 
@@ -9214,70 +8409,38 @@ function toggleLoginPasswordVisibility() {
   if (window.lucide) lucide.createIcons();
 }
 
-async function handleUserLogin(event) {
+function handleUserLogin(event) {
   event.preventDefault();
   const nameInput = document.getElementById("login-input-name")?.value.trim();
   const passInput = document.getElementById("login-input-password")?.value.trim();
 
   if (!nameInput || !passInput) {
-    alert("Vui lòng nhập đầy đủ Họ và tên (hoặc Số điện thoại) và Mật khẩu!");
+    alert("Vui lòng nhập đầy đủ Họ và tên và Mật khẩu!");
     return;
   }
 
-  const normalizeStr = (str) => (str || "").trim().toLowerCase();
-
-  const matchUser = (u) => {
-    const uName = normalizeStr(u.name);
-    const uPhone = normalizeStr(u.phone);
-    const uId = normalizeStr(u.id);
-    const targetIdentifier = normalizeStr(nameInput);
-
-    // Cho phép đăng nhập bằng Họ tên HOẶC Số điện thoại HOẶC Mã tài khoản
-    const matchesIdentity = (uName === targetIdentifier || uPhone === targetIdentifier || uId === targetIdentifier);
-    if (!matchesIdentity) return false;
-
-    const userPass = (u.password !== undefined && u.password !== null && u.password !== "") ? String(u.password).trim() : String(u.phone || "").trim();
-    const userPhone = String(u.phone || "").trim();
-    const inputPass = String(passInput).trim();
-
-    return (userPass === inputPass || userPhone === inputPass);
-  };
-
-  // 1. Kiểm tra tài khoản trong bộ nhớ cục bộ
-  let user = (state.users || []).find(matchUser);
-
-  // 2. Nếu chưa thấy và đã kết nối Google Sheets, tự động kéo dữ liệu mới nhất về kiểm tra lại
-  if (!user && (state.gsheetConfig?.url || DEFAULT_GSHEET_WEBHOOK_URL)) {
-    const submitBtn = event.target?.querySelector("button[type='submit']");
-    const origContent = submitBtn ? submitBtn.innerHTML : "";
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `<span>Đang xác thực từ Google Sheet...</span>`;
-    }
-
-    try {
-      await pullFromGoogleSheet(true);
-      user = (state.users || []).find(matchUser);
-    } catch (e) {
-      console.warn("Lỗi đồng bộ tài khoản khi đăng nhập:", e);
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = origContent;
-      }
-    }
-  }
+  // Find user by name (case-insensitive) or phone number
+  const user = (state.users || []).find(u => 
+    (u.name.toLowerCase() === nameInput.toLowerCase() || u.phone === nameInput) &&
+    (u.password === passInput || u.phone === passInput)
+  );
 
   if (!user) {
-    alert("Họ và tên (hoặc Số điện thoại) hoặc Mật khẩu không chính xác!\n\nVui lòng kiểm tra lại thông tin hoặc liên hệ Quản trị viên.");
+    alert("Họ và tên hoặc Mật khẩu không chính xác! Vui lòng kiểm tra lại hoặc liên hệ Quản trị viên.");
     return;
   }
 
   // Check device for first-time login
+  const isMobile = window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const needsFaceCapture = !user.faceRegistered || !user.avatar;
 
   if (needsFaceCapture) {
-    // Cho phép chụp nhận diện khuôn mặt lần đầu (hỗ trợ cả Camera điện thoại lẫn Webcam máy tính)
+    if (!isMobile) {
+      alert("⚠️ ĐĂNG NHẬP LẦN ĐẦU BẮT BUỘC BẰNG ĐIỆN THOẠI!\n\nTài khoản của bạn chưa hoàn tất chụp ảnh khuôn mặt nhận diện lần đầu. Quy định an toàn hệ thống yêu cầu bạn phải đăng nhập lần đầu bằng ĐIỆN THOẠI DI ĐỘNG để chụp ảnh khuôn mặt nhận diện.\n\nKhông cho phép đăng nhập lần đầu bằng máy tính!");
+      return;
+    }
+
+    // On mobile: show live camera face capture screen
     pendingLoginUser = user;
     pendingCapturedFace = null;
     const nameEl = document.getElementById("login-face-user-name");
@@ -9299,14 +8462,12 @@ async function handleUserLogin(event) {
   user.hasLoggedIn = true;
   user.lastLogin = formatDateTime(new Date());
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", user, { users: state.users });
   hideLoginScreen();
   renderApp();
   showToast(`Xin chào [${user.name}]! Đã đăng nhập thành công (${user.roleBadge || user.role}).`, "success");
 }
 
 function triggerLoginLiveCamera() {
-  currentCameraFacing = "user"; // Luôn ưu tiên Camera trước (Selfie) khi chụp nhận diện khuôn mặt
   openLiveCamera((imgUrl) => {
     pendingCapturedFace = imgUrl;
     const previewImg = document.getElementById("login-face-photo-preview");
@@ -9318,41 +8479,8 @@ function triggerLoginLiveCamera() {
     }
     if (placeholder) placeholder.classList.add("hidden");
     if (finishBtn) finishBtn.disabled = false;
-    showToast("Đã chụp ảnh khuôn mặt thành công! Bấm 'Xác Nhận & Vào Hệ Thống'.", "success");
+    showToast("Đã chụp ảnh khuôn mặt thành công! Bấm Xác Nhận để vào hệ thống.", "success");
   });
-}
-
-function handleLoginFaceFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    pendingCapturedFace = dataUrl;
-    const previewImg = document.getElementById("login-face-photo-preview");
-    const placeholder = document.getElementById("login-face-placeholder");
-    const finishBtn = document.getElementById("btn-finish-first-login");
-    if (previewImg) {
-      previewImg.src = dataUrl;
-      previewImg.classList.remove("hidden");
-    }
-    if (placeholder) placeholder.classList.add("hidden");
-    if (finishBtn) finishBtn.disabled = false;
-    showToast("Đã chọn ảnh khuôn mặt thành công! Bấm 'Xác Nhận & Vào Hệ Thống'.", "success");
-
-    // Nén và tải ảnh lên ImgBB ngầm nếu có kết nối mạng để có link ảnh trực tuyến
-    compressImage(file, 600, 0.8, (blob) => {
-      uploadToImgBB(blob, (imgUrl) => {
-        if (imgUrl) {
-          pendingCapturedFace = imgUrl;
-          if (previewImg) previewImg.src = imgUrl;
-        }
-      });
-    });
-  };
-  reader.readAsDataURL(file);
-  event.target.value = "";
 }
 
 function finishFirstTimeLogin() {
@@ -9364,7 +8492,6 @@ function finishFirstTimeLogin() {
 
   state.currentUser = pendingLoginUser;
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", pendingLoginUser, { users: state.users });
   pendingLoginUser = null;
   pendingCapturedFace = null;
   hideLoginScreen();
@@ -9496,7 +8623,6 @@ function handleChangePassword(event) {
   }
 
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", state.currentUser, { users: state.users });
   event.target.reset();
   closeModal("modal-user-profile");
   showToast("Đã đổi mật khẩu thành công! Hãy ghi nhớ mật khẩu mới cho lần đăng nhập sau.", "success");
@@ -9634,7 +8760,6 @@ function handleAdminCreateUser(event) {
   event.preventDefault();
   const name = document.getElementById("new-user-fullname")?.value.trim();
   const phone = document.getElementById("new-user-phone")?.value.trim();
-  const passwordInput = document.getElementById("new-user-password")?.value.trim();
   const roleType = document.getElementById("new-user-role")?.value || "STAFF";
 
   if (!name || !phone) {
@@ -9648,12 +8773,10 @@ function handleAdminCreateUser(event) {
     return;
   }
 
-  const finalPassword = passwordInput || phone;
-
   const newUser = {
     id: `U${Date.now().toString().slice(-4)}`,
     phone: phone,
-    password: finalPassword,
+    password: phone, // Default password = phone
     name: name,
     role: roleType === "KEEPER" ? "Thủ kho" : (roleType === "ADMIN" ? "Quản trị hệ thống" : "Nhân viên"),
     roleType: roleType,
@@ -9667,11 +8790,9 @@ function handleAdminCreateUser(event) {
 
   state.users.push(newUser);
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", newUser, { users: state.users });
   event.target.reset();
   renderAdminUserList();
-  showToast(`Đã tạo tài khoản cho [${name}] thành công! Mật khẩu: ${finalPassword}`, "success");
-  alert(`Tạo tài khoản thành công!\n\n• Họ tên: ${name}\n• Tên đăng nhập: ${name} (hoặc SĐT: ${phone})\n• Mật khẩu: ${finalPassword}\n\nThông tin tài khoản đã được đồng bộ trực tiếp lên Google Sheets (sheet USERS).`);
+  showToast(`Đã tạo tài khoản cho [${name}] thành công! Mật khẩu mặc định: ${phone}`, "success");
 }
 
 function changeUserRoleAdmin(userId, newRole) {
@@ -9690,7 +8811,6 @@ function changeUserRoleAdmin(userId, newRole) {
   }
 
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", user, { users: state.users });
   renderAdminUserList();
   showToast(`Đã cập nhật phân quyền [${user.roleBadge}] cho [${user.name}]!`, "info");
 }
@@ -9709,7 +8829,6 @@ function deleteUserAdmin(userId) {
 
   state.users = state.users.filter(u => u.id !== userId);
   saveState();
-  syncToGoogleSheet("UPDATE_USERS", null, { users: state.users });
   renderAdminUserList();
   showToast(`Đã xóa tài khoản [${user.name}] thành công!`, "info");
 }

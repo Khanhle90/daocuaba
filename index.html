@@ -50,12 +50,12 @@
         <img src="logo.png" alt="ABA Logo" class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-contain bg-white shadow-xs p-0.5 border border-slate-200">
         <div class="hidden sm:block">
           <div class="flex items-center gap-2">
-            <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">TRUNG TÂM ABA</h1>
+            <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">Quản Lý Đạo Cụ & Kho Bãi</h1>
             <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-sky-100 text-sky-800">
-              v2.0
+              Operations 2.0
             </span>
           </div>
-          <p class="text-[11px] text-slate-500">Hệ thống quản lý đạo cụ và kho bãi</p>
+          <p class="text-[11px] text-slate-500">ABA Inventory & Event Operations System</p>
         </div>
       </div>
 
@@ -195,7 +195,7 @@
             <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
             <path d="M7 21v-7a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v7"/>
           </svg>
-          <span>1. Danh mục</span>
+          <span>1. Kho (Tổng Kho)</span>
         </button>
         <button onclick="switchTab(2)" class="tab-btn flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg text-slate-600 hover:text-sky-600 hover:bg-sky-50/50 transition" data-tab="2">
           <i data-lucide="plus-circle" class="w-4 h-4"></i>
@@ -207,7 +207,7 @@
         </button>
         <button onclick="switchTab(4)" class="tab-btn flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg text-slate-600 hover:text-sky-600 hover:bg-sky-50/50 transition relative" data-tab="4">
           <i data-lucide="arrow-down-left" class="w-4 h-4"></i>
-          <span>4. Nhập kho</span>
+          <span>4. Thu Hồi (Nhập Lại)</span>
           <span id="tab4-postcheck-count-badge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs" title="Có đồ cần hậu kiểm">0</span>
         </button>
         <button onclick="switchTab(5)" class="tab-btn flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg text-slate-600 hover:text-sky-600 hover:bg-sky-50/50 transition" data-tab="5">
@@ -307,7 +307,7 @@
           <!-- Search Box -->
           <div class="relative flex-1">
             <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input type="text" id="tab1-search" oninput="renderTab1Items()" placeholder="Tìm theo tên đạo cụ hoặc thông số kỹ thuật" class="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition">
+            <input type="text" id="tab1-search" oninput="renderTab1Items()" placeholder="Tìm theo mã đạo cụ (A-001...), tên đạo cụ hoặc thông số kỹ thuật..." class="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition">
           </div>
 
           <!-- Excel Actions -->
@@ -527,47 +527,81 @@
             <input type="text" id="tab2-code" readonly placeholder="Tự tạo A0001...">
           </div>
 
-          <!-- Form Fields Row 1: Tên đạo cụ + Đơn vị + Số lượng trên cùng 1 hàng -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-2 sm:gap-3">
-            <!-- Tên đạo cụ: giữ nguyên độ rộng (2 cột) -->
-            <div class="md:col-span-2 relative">
+          <!-- Form Fields Row 1: Tên đạo cụ + Đơn vị dồn 1 hàng -->
+          <div class="grid grid-cols-3 gap-2 sm:gap-3">
+            <!-- Tên đạo cụ (With Live Autocomplete Dropdown) -->
+            <div class="col-span-2 relative">
               <label class="block font-semibold text-slate-700 mb-1">Tên đạo cụ <span class="text-rose-500">*</span></label>
               <input type="text" id="tab2-name" required autocomplete="off" oninput="handleTab2NameInput(this.value)" placeholder="Gõ tên để tìm hoặc nhập mới..." class="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none text-xs">
               <!-- Live Floating Suggestions -->
               <div id="tab2-name-suggestions" class="autocomplete-suggestions hidden"></div>
             </div>
 
-            <!-- Đơn vị: 1 cột (độ rộng gọn) -->
-            <div class="md:col-span-1">
+            <!-- Đơn vị -->
+            <div class="col-span-1">
               <label class="block font-semibold text-slate-700 mb-1">Đơn vị <span class="text-rose-500">*</span></label>
               <input type="text" id="tab2-unit" required placeholder="cái, bộ..." class="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-sky-500 focus:outline-none text-xs">
             </div>
+          </div>
 
-            <!-- Số lượng: 1 cột (bằng độ rộng đơn vị) -->
-            <div class="md:col-span-1">
+          <!-- Form Fields Row 2: Số lượng + Định mức tồn tối thiểu dồn 1 hàng -->
+          <div class="grid grid-cols-2 gap-2 sm:gap-3">
+            <div>
               <label class="block font-semibold text-slate-700 mb-1">Số lượng <span class="text-rose-500">*</span></label>
               <input type="number" id="tab2-qty" min="1" value="1" required oninput="updateTab2ShelfValidation()" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-center font-bold text-sky-900 focus:ring-1 focus:ring-sky-500 focus:outline-none text-xs">
             </div>
-          </div>
-
-          <!-- Form Fields Row 2: Thông số kỹ thuật / Ghi chú + Định mức tồn tối thiểu (= 1/3 hàng) -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3">
-            <!-- Thông số kỹ thuật / Ghi chú (chiếm 2/3 hàng) -->
-            <div class="md:col-span-2">
-              <label class="block font-semibold text-slate-700 mb-1">Thông số kỹ thuật / Ghi chú</label>
-              <input type="text" id="tab2-specs" placeholder="Quy cách, kích thước, màu sắc..." class="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-sky-500 focus:outline-none text-xs">
-            </div>
-
-            <!-- Định mức tồn tối thiểu (chiếm 1/3 hàng = 1 cột) -->
-            <div class="md:col-span-1">
+            <div>
               <label class="block font-semibold text-slate-700 mb-1">Định mức tồn tối thiểu</label>
               <input type="number" id="tab2-minstock" min="0" value="0" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-center focus:ring-1 focus:ring-sky-500 focus:outline-none text-xs">
             </div>
           </div>
 
-<button type="button" onclick="openWarehouseMap(document.getElementById('tab2-warehouse')?.value)" class="text-[11px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 transition cursor-pointer" title="Tra cứu sơ đồ vị trí giá kệ kho nhập này">
-                    <span>🗺️ Tra Bản Đồ Kho</span>
-                  </button>
+          <!-- Form Fields Row 3: Chỉ thông số kỹ thuật mới cần 1 hàng riêng -->
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Thông số kỹ thuật / Ghi chú</label>
+            <input type="text" id="tab2-specs" placeholder="Quy cách, kích thước, màu sắc..." class="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-sky-500 focus:outline-none text-xs">
+          </div>
+
+          <!-- BOX: Vị Trí Lưu Kho (1 kho cho mỗi lần lưu) - Yellow container Image 1 -->
+          <div class="border-2 border-amber-300 bg-amber-50/20 rounded-2xl p-4 space-y-3">
+            
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div class="flex items-center gap-2 font-bold text-slate-800 text-xs sm:text-sm">
+                <span>🏛️ Vị Trí Lưu Kho (1 kho cho mỗi lần lưu)</span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <!-- Status Badge -->
+                <span id="tab2-shelf-status-badge" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                  <i data-lucide="check-square" class="w-3.5 h-3.5"></i>
+                  <span>Khớp số lượng: 1 / 1</span>
+                </span>
+
+                <!-- Button: + Thêm vị trí giá kệ -->
+                <button type="button" onclick="addTab2ShelfItemRow()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>+ Thêm vị trí giá kệ</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Kho lưu trữ đang chọn (Đã chọn tại Thông tin chung phía trên) -->
+            <div class="flex items-center justify-between p-2.5 bg-amber-100/70 rounded-xl border border-amber-300 text-xs">
+              <div class="flex items-center gap-2 truncate">
+                <i data-lucide="map-pin" class="w-4 h-4 text-amber-700 shrink-0"></i>
+                <span class="text-slate-700">Lưu vào kho: <strong id="tab2-selected-warehouse-label" class="text-amber-950 font-extrabold">Kho Tổng Mỹ Đình (Hà Nội)</strong></span>
+              </div>
+              <button type="button" onclick="openWarehouseMap(document.getElementById('tab2-warehouse')?.value)" class="text-[11px] font-bold text-amber-900 hover:underline flex items-center gap-1 shrink-0 cursor-pointer" title="Tra cứu sơ đồ vị trí giá kệ kho này">
+                <span>🗺️ Sơ Đồ Giá Kệ</span>
+              </button>
+            </div>
+
+            <!-- Shelf Rows Container -->
+            <div id="tab2-shelf-rows-container" class="space-y-2 pt-1">
+              <!-- shelf rows inserted dynamically -->
+            </div>
+
+          </div>
 
           <!-- Danh mục (Chọn nhiều) - Pill Buttons (Image 1) -->
           <div class="space-y-1.5 pt-1">
@@ -695,7 +729,7 @@
 
           <!-- Thời gian thực hiện -->
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Ngày thực hiện chương trình</label>
+            <label class="block font-semibold text-slate-700 mb-1">Thời gian thực hiện</label>
             <input type="date" id="tab3-project-date" class="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-sky-500 focus:outline-none">
           </div>
 
@@ -919,7 +953,7 @@
             <table class="w-full text-left text-xs border-collapse">
               <thead>
                 <tr class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase text-[10px]">
-                  <th class="py-2.5 px-3">Đạo Cụ</th>
+                  <th class="py-2.5 px-3">Tên Đạo Cụ</th>
                   <th class="py-2.5 px-2 text-center w-16">ĐVT</th>
                   <th class="py-2.5 px-2 text-center w-20">Mang Đi</th>
                   <th class="py-2.5 px-2 text-center w-24 bg-emerald-50/50 text-emerald-700">SL Còn Tốt</th>
@@ -1001,7 +1035,7 @@
             </button>
             <button type="button" onclick="submitTab4ReturnSlip()" class="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer">
               <i data-lucide="check-circle" class="w-4 h-4"></i>
-              <span>Hoàn Tất Nhập Kho</span>
+              <span>Hoàn Tất Nhập Kho (NK_...)</span>
             </button>
           </div>
         </div>
@@ -1081,7 +1115,7 @@
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2">
         <div>
           <h2 class="text-base font-bold text-slate-900">Quy Trình Sửa Chữa & Phục Hồi Đạo Cụ Hỏng</h2>
-          <p class="text-xs text-slate-500">Chỉ hiển thị các đạo cụ có số lượng hư hại. Chọn đồ cần xử lý.</p>
+          <p class="text-xs text-slate-500">Chỉ hiển thị các đạo cụ có số lượng hư hại (Broken > 0). Chọn món đồ để xử lý.</p>
         </div>
         <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1">
           <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
@@ -1094,7 +1128,7 @@
         <div class="flex items-center justify-between pb-2 border-b border-amber-200">
           <div class="font-extrabold text-amber-950 flex items-center gap-2 text-sm">
             <i data-lucide="wrench" class="w-4 h-4 text-amber-700"></i>
-            <span>Đạo Cụ Đang Gửi Sửa ngoài</span>
+            <span>Đạo Cụ Đang Gửi Thợ Ngoài Sửa Chữa (Chờ Nghiệm Thu & Nhập Về Kho)</span>
           </div>
           <span id="tab6-pending-count" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-200 text-amber-900">0 đơn chờ</span>
         </div>
@@ -1119,8 +1153,8 @@
         
         <div class="flex items-center justify-between pb-3 border-b border-slate-200">
           <div>
-            <h2 class="text-base font-bold text-slate-900">Lập Phiếu Thanh Lý Tài Sản</h2>
-            <p class="text-xs text-slate-500">Xử lý đạo cụ hư hỏng không thể phục hồi, hết niên hạn hoặc đen bán</p>
+            <h2 class="text-base font-bold text-slate-900">Lập Phiếu Thanh Lý & Hủy Bỏ Tài Sản</h2>
+            <p class="text-xs text-slate-500">Xử lý đạo cụ hư hỏng nặng không thể phục hồi hoặc hết hạn sử dụng</p>
           </div>
           <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700">
             Thanh Lý
@@ -1159,11 +1193,11 @@
             <div class="grid grid-cols-2 gap-3">
               <label class="flex items-center gap-2 p-2 bg-white border border-rose-200 rounded-lg cursor-pointer">
                 <input type="radio" name="tab7-source" value="BROKEN" checked class="text-rose-600 focus:ring-rose-500">
-                <span class="font-medium text-slate-800">Trừ vào số đồ ĐANG HỎNG</span>
+                <span class="font-medium text-slate-800">Trừ vào nguồn ĐANG HỎNG (Khuyến nghị)</span>
               </label>
               <label class="flex items-center gap-2 p-2 bg-white border border-rose-200 rounded-lg cursor-pointer">
                 <input type="radio" name="tab7-source" value="READY" class="text-rose-600 focus:ring-rose-500">
-                <span class="font-medium text-slate-800">Trừ vào số đồ DÙNG ĐƯỢC</span>
+                <span class="font-medium text-slate-800">Trừ trực tiếp vào nguồn DÙNG ĐƯỢC</span>
               </label>
             </div>
           </div>
@@ -1181,8 +1215,8 @@
               <table class="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase text-[10px]">
-                    <th class="py-2.5 px-3">Đạo Cụ</th>
-                    <th class="py-2.5 px-2 text-center w-20">Số lượng</th>
+                    <th class="py-2.5 px-3">Tên Đạo Cụ</th>
+                    <th class="py-2.5 px-2 text-center w-20">SL Thanh Lý</th>
                     <th class="py-2.5 px-3">Hình Thức Xử Lý</th>
                     <th class="py-2.5 px-2 text-right w-28">Thu Hồi (VNĐ)</th>
                     <th class="py-2.5 px-2 w-10 text-center">Xóa</th>
@@ -1199,7 +1233,7 @@
           <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
             <button type="submit" class="px-5 py-2.5 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition flex items-center gap-2">
               <i data-lucide="check" class="w-4 h-4"></i>
-              <span>Hoàn Tất Thanh Lý</span>
+              <span>Hoàn Tất Thanh Lý (TL_...)</span>
             </button>
           </div>
 
@@ -1214,41 +1248,37 @@
     <!-- ========================================================================= -->
     <section id="tab-panel-8" class="tab-panel hidden space-y-4">
       
-      <!-- Filter Bar: Tối ưu tinh gọn - Tìm theo kho và loại phiếu luôn CÙNG HÀNG -->
-      <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200/80 shadow-xs">
-        <div class="flex flex-col md:flex-row items-stretch md:items-center gap-2">
+      <!-- Filter Bar -->
+      <div class="bg-white p-3 sm:p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+        
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           
           <!-- Universal Search -->
           <div class="relative flex-1">
-            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input type="text" id="tab8-search" oninput="renderTab8Documents()" placeholder="Tìm theo mã phiếu, tên dự án, người lập..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="tab8-search" oninput="renderTab8Documents()" placeholder="Tìm theo mã phiếu (XK_..., NK_..., DC_...), tên dự án, người lập..." class="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500">
           </div>
 
-          <!-- Khối 2 ô chọn: Loại phiếu + Kho lưu trữ (Luôn nằm CÙNG 1 HÀNG) -->
-          <div class="grid grid-cols-2 gap-2 md:flex md:items-center shrink-0">
-            <!-- Type Filter -->
-            <div class="w-full md:w-48">
-              <select id="tab8-filter-type" onchange="renderTab8Documents()" class="w-full text-xs py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none font-medium truncate">
-                <option value="ALL">Tất cả loại phiếu</option>
-                <option value="Xuất kho">Xuất kho (XK)</option>
-                <option value="Nhập hoàn trả">Thu hồi sau tour (NK)</option>
-                <option value="Nhập lần đầu">Nhập mới lần đầu</option>
-                <option value="Điều chuyển">Điều chuyển (DC)</option>
-                <option value="Sửa chữa">Sửa chữa (SC)</option>
-                <option value="Chuẩn bị">Phiếu chuẩn bị (CB)</option>
-                <option value="Thanh lý">Thanh lý (TL)</option>
-              </select>
-            </div>
+          <!-- Type Filter -->
+          <div class="flex items-center gap-2">
+            <select id="tab8-filter-type" onchange="renderTab8Documents()" class="text-xs py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none font-medium">
+              <option value="ALL">Tất cả loại phiếu</option>
+              <option value="Xuất kho">Xuất kho (XK_...)</option>
+              <option value="Nhập hoàn trả">Thu hồi sau chương trình (NK_...)</option>
+              <option value="Nhập lần đầu">Nhập mới lần đầu</option>
+              <option value="Điều chuyển">Điều chuyển hiện trường (DC_...)</option>
+              <option value="Sửa chữa">Sửa chữa (SC_...)</option>
+              <option value="Chuẩn bị">Phiếu chuẩn bị (CB_...)</option>
+              <option value="Thanh lý">Thanh lý (TL_...)</option>
+            </select>
 
-            <!-- Warehouse Filter -->
-            <div class="w-full md:w-44">
-              <select id="tab8-filter-warehouse" onchange="renderTab8Documents()" class="w-full text-xs py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none font-medium truncate">
-                <option value="ALL">Tất cả kho lưu trữ</option>
-              </select>
-            </div>
+            <select id="tab8-filter-warehouse" onchange="renderTab8Documents()" class="text-xs py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none font-medium">
+              <option value="ALL">Tất cả kho</option>
+            </select>
           </div>
 
         </div>
+
       </div>
 
       <!-- Desktop Table -->
@@ -1592,10 +1622,7 @@
             <i data-lucide="sheet" class="w-5 h-5"></i>
           </div>
           <div>
-            <h3 class="text-base font-bold text-slate-900 flex items-center gap-1.5">
-              <span>Cấu Hình Kết Nối Google Sheet</span>
-              <span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">Admin</span>
-            </h3>
+            <h3 class="text-base font-bold text-slate-900">Cấu Hình Kết Nối Google Sheet</h3>
             <p class="text-xs text-slate-500">Đồng bộ dữ liệu thời gian thực 2 chiều</p>
           </div>
         </div>
@@ -1622,15 +1649,6 @@
           </button>
           <button type="button" onclick="saveGSheetConfig()" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition">
             Lưu Cấu Hình
-          </button>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
-          <button type="button" onclick="triggerFullGSheetSync()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-center transition">
-            ⬆️ Đẩy dữ liệu Web lên Sheet
-          </button>
-          <button type="button" onclick="forceReloadFromGSheet()" class="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-semibold rounded-lg text-center transition">
-            🔄 Xóa Cache & Tải lại từ Sheet
           </button>
         </div>
       </div>
@@ -1753,27 +1771,23 @@
 
       <div class="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
         
-        <!-- Form Tạo Tài Khoản Mới -->
+        <!-- Form Tạo Tài Khoản Mới (Chỉ cần 2 thông tin: Họ tên & SĐT) -->
         <form id="form-create-new-user" onsubmit="handleAdminCreateUser(event)" class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
           <div class="font-extrabold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5">
             <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
             <span>+ Tạo Tài Khoản Nhân Sự Mới</span>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">1. Họ và tên: *</label>
               <input type="text" id="new-user-fullname" required placeholder="Ví dụ: Nguyễn Văn Hùng..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold">
             </div>
             <div>
-              <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">2. Số điện thoại: *</label>
+              <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">2. Số điện thoại: * (Làm MK mặc định)</label>
               <input type="tel" id="new-user-phone" required placeholder="Ví dụ: 0912345678..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold">
             </div>
             <div>
-              <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">3. Mật khẩu khởi tạo:</label>
-              <input type="text" id="new-user-password" placeholder="Để trống tự lấy SĐT..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold">
-            </div>
-            <div>
-              <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">4. Phân quyền vai trò:</label>
+              <label class="block text-[11px] font-semibold text-slate-700 mb-0.5">Phân quyền vai trò:</label>
               <select id="new-user-role" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800">
                 <option value="STAFF">👤 Tài khoản thông thường</option>
                 <option value="KEEPER">⭐ Thủ kho</option>
@@ -1782,7 +1796,7 @@
             </div>
           </div>
           <div class="flex items-center justify-between pt-1">
-            <span class="text-[10px] text-slate-500 italic">* Mật khẩu đăng nhập mặc định là Số điện thoại nếu để trống. Thông tin tài khoản sẽ tự động lưu & đồng bộ lên Google Sheets (sheet USERS).</span>
+            <span class="text-[10px] text-slate-500 italic">* Mật khẩu đăng nhập mặc định ban đầu là Số điện thoại. Lần đầu đăng nhập bắt buộc dùng điện thoại để chụp ảnh khuôn mặt.</span>
             <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-xs shrink-0 flex items-center gap-1">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>
               <span>Tạo Tài Khoản</span>
@@ -1871,27 +1885,6 @@
           </div>
         </div>
 
-        <!-- Photo 3: Preparation Slip Photo -->
-        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-          <div class="flex items-center justify-between font-semibold text-slate-800">
-            <span>3. Ảnh chụp file phiếu chuẩn bị đồ: <span class="text-rose-500 font-bold">* (Bắt buộc)</span></span>
-          </div>
-          <div class="flex items-center gap-2">
-            <button type="button" onclick="triggerCameraCapture('tab3-photo-slip-preview')" class="flex-1 py-2.5 px-3 border border-slate-300 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-semibold camera-trigger flex items-center justify-center gap-1.5 shadow-2xs">
-              <i data-lucide="camera" class="w-4 h-4 text-sky-600"></i>
-              <span>📸 Bật Máy Ảnh Chụp Phiếu</span>
-            </button>
-            <label class="flex-1 py-2.5 px-3 border border-slate-300 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs">
-              <i data-lucide="upload" class="w-4 h-4 text-slate-500"></i>
-              <span>Tải File Ảnh Phiếu</span>
-              <input type="file" accept="image/*" class="hidden" onchange="handleTab3SlipUpload(event)">
-            </label>
-          </div>
-          <div id="tab3-photo-slip-preview" class="hidden relative h-32 rounded-lg border border-slate-200 overflow-hidden">
-            <img src="" alt="Slip photo" class="w-full h-full object-cover">
-          </div>
-        </div>
-
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Ghi chú xuất kho:</label>
           <input type="text" id="tab3-notes" placeholder="Biển số xe, tên lái xe, số điện thoại liên hệ..." class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg">
@@ -1961,7 +1954,7 @@
 
         <button type="button" onclick="submitMultiFieldTransfer()" class="w-full py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-extrabold rounded-xl transition shadow-sm text-xs sm:text-sm flex items-center justify-center gap-2">
           <i data-lucide="send" class="w-4 h-4"></i>
-          <span>Lập Phiếu Điều Chuyển</span>
+          <span>Lập Phiếu Điều Chuyển (DC_...)</span>
         </button>
       </div>
     </div>
@@ -2010,7 +2003,7 @@
             <thead>
               <tr class="bg-slate-50 border-b border-slate-200 font-bold text-slate-700 text-[11px]">
                 <th class="py-2.5 px-3 w-12 text-center">Tích</th>
-                <th class="py-2.5 px-3 min-w-[200px]">Đạo Cụ</th>
+                <th class="py-2.5 px-3 min-w-[200px]">Tên Đạo Cụ</th>
                 <th class="py-2.5 px-2 text-center w-16">ĐVT</th>
                 <th class="py-2.5 px-2 text-center w-24">SL Gửi Đi</th>
                 <th class="py-2.5 px-2 text-center w-28 bg-emerald-50/50 text-emerald-800">SL Thực Nhận</th>
@@ -2135,7 +2128,7 @@
           </div>
 
           <button type="button" onclick="submitSendExternalRepair()" class="w-full py-2.5 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition">
-            Lập Phiếu Gửi Đi Sửa
+            Lập Phiếu Gửi Đi Sửa (SC_OUT_...)
           </button>
         </div>
 
@@ -2242,44 +2235,46 @@
   </div>
 
   <!-- LIVE CAMERA VIEWFINDER MODAL -->
-  <div id="modal-live-camera" class="fixed inset-0 hidden flex items-center justify-center p-3 sm:p-4 modal-overlay" style="z-index: 100050;">
-    <div class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm" onclick="closeLiveCamera()"></div>
-    <div class="relative bg-slate-900 rounded-3xl max-w-lg w-full overflow-hidden z-20 shadow-2xl modal-content p-4 sm:p-5 space-y-3.5 border border-slate-700 text-white">
+  <div id="modal-live-camera" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 sm:p-4 modal-overlay">
+    <div class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs" onclick="closeLiveCamera()"></div>
+    <div class="bg-slate-900 rounded-2xl max-w-lg w-full overflow-hidden z-10 shadow-2xl modal-content p-4 space-y-3 border border-slate-700 text-white">
       <div class="flex items-center justify-between pb-2 border-b border-slate-700">
         <div class="flex items-center gap-2">
           <i data-lucide="camera" class="w-5 h-5 text-sky-400"></i>
-          <h3 class="text-sm font-bold text-white">Máy Ảnh Chụp Hình Trực Tiếp</h3>
+          <h3 class="text-sm font-bold text-white">Máy Ảnh Trực Tiếp</h3>
         </div>
-        <button type="button" onclick="closeLiveCamera()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button type="button" onclick="closeLiveCamera()" class="p-1 text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
       
       <!-- Viewfinder Screen -->
-      <div class="relative bg-black rounded-2xl overflow-hidden aspect-4/3 flex items-center justify-center border border-slate-800 shadow-inner">
+      <div class="relative bg-black rounded-xl overflow-hidden aspect-4/3 flex items-center justify-center border border-slate-800">
         <video id="live-camera-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
         <canvas id="live-camera-canvas" class="hidden"></canvas>
-        <div id="camera-loading-spinner" class="absolute inset-0 flex flex-col items-center justify-center bg-black/75 text-xs text-slate-300 gap-2">
-          <i data-lucide="loader-2" class="w-7 h-7 animate-spin text-sky-400"></i>
-          <span class="font-semibold">Đang kết nối ống kính máy ảnh...</span>
+        <div id="camera-loading-spinner" class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-xs text-slate-300 gap-2">
+          <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-sky-400"></i>
+          <span>Đang khởi động máy ảnh...</span>
         </div>
       </div>
 
       <!-- Controls -->
       <div class="flex items-center justify-between pt-1">
-        <button type="button" onclick="switchCameraFacing()" id="btn-switch-camera" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition">
+        <button type="button" onclick="switchCameraFacing()" id="btn-switch-camera" class="px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition">
           <i data-lucide="refresh-cw" class="w-4 h-4 text-sky-400"></i>
-          <span>Đổi camera trước/sau</span>
+          <span>Đổi camera</span>
         </button>
 
         <!-- Big Capture Button -->
-        <button type="button" onclick="captureLivePhoto()" class="w-16 h-16 rounded-full bg-white border-4 border-sky-500 hover:bg-sky-50 active:scale-95 transition shadow-xl flex items-center justify-center text-slate-900 cursor-pointer" title="Bấm để chụp ảnh">
-          <div class="w-11 h-11 rounded-full bg-red-600 flex items-center justify-center shadow-inner">
-            <i data-lucide="camera" class="w-5 h-5 text-white"></i>
-          </div>
+        <button type="button" onclick="captureLivePhoto()" class="w-14 h-14 rounded-full bg-white border-4 border-sky-500 hover:bg-sky-50 active:scale-95 transition shadow-lg flex items-center justify-center text-slate-900" title="Bấm để chụp ảnh">
+          <div class="w-10 h-10 rounded-full bg-red-600"></div>
         </button>
 
-        <button type="button" onclick="closeLiveCamera()" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+        <button type="button" onclick="closeLiveCamera()" class="px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
           Đóng
         </button>
+      </div>
+    </div>
+  </div>
+
       </div>
     </div>
   </div>
@@ -2414,7 +2409,7 @@
               <thead>
                 <tr class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase text-[10px]">
                   <th class="py-2.5 px-3 text-center w-10">STT</th>
-                  <th class="py-2.5 px-3">Đạo Cụ</th>
+                  <th class="py-2.5 px-3">Tên Đạo Cụ</th>
                   <th class="py-2.5 px-2 text-center w-14">ĐVT</th>
                   <th class="py-2.5 px-2 text-center w-20 bg-amber-50 text-amber-900">SL Cần HK</th>
                   <th class="py-2.5 px-2 text-center w-24 bg-emerald-50 text-emerald-800">SL Còn Tốt</th>
@@ -2457,16 +2452,16 @@
           <img src="logo.png" alt="Logo ABA" class="w-14 h-14 object-contain">
         </div>
         <h2 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">HỆ THỐNG QUẢN LÝ ĐẠO CỤ & KHO BÃI</h2>
-        <p class="text-slate-500 text-xs">Đăng nhập tài khoản</p>
+        <p class="text-slate-500 text-xs">Đăng nhập tài khoản tác nghiệp ABA Operations</p>
       </div>
 
       <!-- Login Form View -->
       <div id="login-form-view">
         <form id="form-user-login" onsubmit="handleUserLogin(event)" class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">1. Họ và Tên hoặc Số Điện Thoại: *</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">1. Họ và Tên Nhân Sự: *</label>
             <div class="relative">
-              <input type="text" id="login-input-name" required placeholder="Nhập họ và tên hoặc Số điện thoại..." class="w-full p-3 pl-9 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:bg-white transition">
+              <input type="text" id="login-input-name" required placeholder="Nhập họ và tên (Ví dụ: Nguyễn Văn An)..." class="w-full p-3 pl-9 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:bg-white transition">
               <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3 top-3.5"></i>
             </div>
           </div>
@@ -2489,9 +2484,9 @@
               <span>Quy định xác thực bảo mật:</span>
             </div>
             <ul class="list-disc list-inside text-[10px] text-amber-800 space-y-0.5 pl-0.5">
-              <li>Đăng nhập bằng <strong>Họ tên hoặc Số điện thoại</strong> kèm Mật khẩu khởi tạo.</li>
-              <li>Lần đầu đăng nhập: Chụp nhận diện khuôn mặt qua Camera điện thoại hoặc Webcam máy tính để kích hoạt tài khoản.</li>
-              <li>Thông tin tài khoản và đăng nhập được lưu trữ & đồng bộ bảo mật trực tiếp trên Google Sheets.</li>
+              <li>Lần đầu đăng nhập <strong>bắt buộc thực hiện trên ĐIỆN THOẠI</strong> để chụp ảnh khuôn mặt nhận diện.</li>
+              <li>Mật khẩu mặc định là <strong>Số điện thoại</strong> đã được Quản trị viên cấp.</li>
+              <li>Không thể tự ý chuyển đổi hoặc thoát tài khoản trừ khi có mật khẩu Quản trị.</li>
             </ul>
           </div>
 
@@ -2502,7 +2497,7 @@
         </form>
       </div>
 
-      <!-- Face Capture View (Shown during first-time login on mobile/desktop) -->
+      <!-- Face Capture View (Shown during first-time login on mobile) -->
       <div id="login-face-capture-view" class="hidden space-y-4 text-center">
         <div class="p-3 bg-sky-50 rounded-2xl border border-sky-200 text-sky-950">
           <div class="font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5">
@@ -2521,30 +2516,12 @@
           </div>
         </div>
 
-        <!-- Hidden file inputs for Native Camera and File picker -->
-        <input type="file" id="login-face-native-cam" accept="image/*" capture="user" class="hidden" onchange="handleLoginFaceFileUpload(event)">
-        <input type="file" id="login-face-file-input" accept="image/*" class="hidden" onchange="handleLoginFaceFileUpload(event)">
-
         <div class="space-y-2">
-          <!-- Option 1: Live WebRTC Camera (Works on Desktop Webcam & Phone) -->
           <button type="button" onclick="triggerLoginLiveCamera()" class="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-2">
             <i data-lucide="camera" class="w-4 h-4"></i>
-            <span>Mở Camera / Webcam Trực Tiếp</span>
+            <span>Mở Camera Chụp Khuôn Mặt</span>
           </button>
 
-          <!-- Option 2: Native Phone Camera (Opens Phone's Camera App) -->
-          <button type="button" onclick="document.getElementById('login-face-native-cam').click()" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 border border-indigo-200">
-            <i data-lucide="smartphone" class="w-4 h-4"></i>
-            <span>Chụp Bằng Camera Điện Thoại (Tự Động)</span>
-          </button>
-
-          <!-- Option 3: Upload from Gallery / Device Files -->
-          <button type="button" onclick="document.getElementById('login-face-file-input').click()" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5">
-            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
-            <span>Hoặc chọn ảnh chân dung có sẵn</span>
-          </button>
-
-          <!-- Confirm & Finish -->
           <button type="button" id="btn-finish-first-login" onclick="finishFirstTimeLogin()" disabled class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-2">
             <i data-lucide="check-circle" class="w-4 h-4"></i>
             <span>Xác Nhận & Vào Hệ Thống</span>
@@ -2613,7 +2590,7 @@
         <!-- SVG Floor Plan or Uploaded Image rendered dynamically -->
       </div>
       <div class="absolute bottom-2 left-3 bg-slate-900/85 backdrop-blur-xs text-[10px] text-slate-400 px-2 py-1 rounded-md border border-slate-700/60 pointer-events-none select-none">
-        Có thể phóng to và thu nhỏ bản đồ. Tắt bằng dấu X đỏ phía trên.
+        Cuộn chuột để Phóng to/Thu nhỏ • Nhấn giữ chuột/chạm để Kéo bản đồ
       </div>
     </div>
   </div>
